@@ -93,3 +93,89 @@ const getProductById = async(req,res) =>{
     });
   }
 }
+
+const updateProduct = async (req,res) =>{
+
+  try{
+    const isValid = mongoose.Types.ObjectId.isValid(req.params.id);
+    if(!isValid){
+      return res.status(404).json({
+        success: false,
+        message: "Invalid id"
+      })
+    };
+    const allowedUpdates = new Set([
+      "name",
+      "price",
+      "quantity",
+      "category",
+      "description"
+    ]);
+    const updates = Object.keys(req.body);
+    const isValidUpdate = updates.every( (field)=> allowedUpdates.has(field));
+    if(!isValidUpdate){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid updates"
+      })
+    };
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+  
+    if(!product){
+      return res.status(400).json({
+      success: false,
+      message: "Product not found"
+    })
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Product updated",
+      data: product
+    });
+  }
+catch(err){
+  console.error(err);
+  return res.status(500).json({
+    success: false,
+    message: "Internal server error"
+  });
+  }
+}
+const deleteProduct = async (req,res)=>{
+  try{
+    const {id} = req.params;
+    const isValid = mongoose.Types.ObjectId.isValid(id);
+    if(!isValid){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid id"
+      });
+    }
+    const product = await Product.findByIdAndDelete(id);
+    if(!product){
+      return res.status(404).json({
+        success: false,
+        message: "Product not found"
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Product deleted",
+      data: product
+    });
+  }
+  catch(err){
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  };
+};
