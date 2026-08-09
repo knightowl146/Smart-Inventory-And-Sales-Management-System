@@ -1,0 +1,37 @@
+const mongoose = require("mongoose");
+
+const stockMovementsSchema = new mongoose.Schema(
+    {
+        product:{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Product",
+            required: true
+        },
+
+        type:{
+            type: String,
+            enum:["PURCHASE","SALE"],
+            required: true
+        },
+
+        quantity:{
+            type: Number,
+            required: true
+        },
+
+        prevQuantity:{
+            type: Number,
+            required: true
+        },
+
+        newQuantity:{
+            type: Number,
+            required: true
+        }
+    },
+    {
+        timestamps: true
+    }
+);
+
+module.exports = mongoose.model("StockMovement",stockMovementSchema);

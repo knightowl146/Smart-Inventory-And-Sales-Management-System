@@ -1,5 +1,7 @@
 const Product = require("../models/Product");
+const StockMovement = require("../models/StockMovements")
 
+//<------------CREATE PRODUCT----------->
 const createProduct = async (req,res) =>{
 
     try{
@@ -36,7 +38,7 @@ const createProduct = async (req,res) =>{
         });
     }
 }
-
+//<-----------GET ALL PRODUCTS------------->
 const getProducts = async (req,res) =>{
     try{     
         const products = await Product.find();
@@ -55,7 +57,7 @@ const getProducts = async (req,res) =>{
         })
     }   
 }
-
+//<-------------SEARCH PRODUCT BY ID--------------->
 const getProductById = async(req,res) =>{
 
   try{
@@ -93,10 +95,11 @@ const getProductById = async(req,res) =>{
     });
   }
 }
-
+//<------------------UPDATE PRODUCT----------------->
 const updateProduct = async (req,res) =>{
 
   try{
+    // Validating id
     const isValid = mongoose.Types.ObjectId.isValid(req.params.id);
     if(!isValid){
       return res.status(404).json({
@@ -104,6 +107,7 @@ const updateProduct = async (req,res) =>{
         message: "Invalid id"
       })
     };
+    // Validating requested updates
     const allowedUpdates = new Set([
       "name",
       "price",
@@ -119,6 +123,7 @@ const updateProduct = async (req,res) =>{
         message: "Invalid updates"
       })
     };
+    // Updating product
     const product = await Product.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -140,14 +145,16 @@ const updateProduct = async (req,res) =>{
       data: product
     });
   }
-catch(err){
-  console.error(err);
-  return res.status(500).json({
-    success: false,
-    message: "Internal server error"
-  });
+  catch(err){
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
   }
 }
+
+//<----------DELETE PRODUCT----------->
 const deleteProduct = async (req,res)=>{
   try{
     const {id} = req.params;
@@ -180,6 +187,8 @@ const deleteProduct = async (req,res)=>{
   };
 };
 
+
+//<-----------------PURCHASE STOCK--------------->
 const purchaseStock = async (req,res)=>{
 
 
@@ -231,6 +240,17 @@ const purchaseStock = async (req,res)=>{
             message:"Product not found"
         });
     }
+
+    const newQuantity = product.quantity;
+    const prevQuantity = newQuantity - quantity;
+    await StockMovement.create({
+      product: product._id,
+      type: "PURCHASE",
+      quantity: quantity,
+      previousStock: prevQuantity,
+      newStock: newQuantity
+    })
+
     return res.status(200).json({
         success:true,
         message: "Stock added successfully",
@@ -246,3 +266,88 @@ const purchaseStock = async (req,res)=>{
     });
   };
 };
+
+
+//<-----------------SELL PRODUCT--------------->
+const sellProduct = async (req,res)=>{
+
+  try{
+    const {quantity} = req.body;
+    const {id} = req.params;
+    const isValidId = mongoose.Types.ObjectId.isValid(id);
+    if(!isValidId){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid id"
+      });
+    }
+    if(typeof quantity !== 'number' || isNaN(quantity)){
+      return res.status(400).json({
+        success: false,
+        message: "Quantity is required and must be a number"
+      });
+
+    }
+    if(quantity <= 0){
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be greater than 0"
+      });
+    }
+    if(!Number.isInteger(quantity)){
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be an integer"
+      });
+    }
+
+    // here we are using filters to check if the sale is valid
+    const product = await Product.findOneAndUpdate({
+      _id:id,
+      quantity: {
+        $gte: quantity
+      }
+    },
+    {
+      $inc:{
+        quantity: -quantity
+      }
+    },
+    {
+      new: true,
+      runValidators: true
+    })
+
+    // product == null when the filter rejects the sale
+    if(!product){
+      res.status(404).json({
+        success: false,
+        message: "Insufficient stock"
+      })
+    }
+    const newQuantity = product.quantity;
+    const prevQuantity = newQuantity + quantity;
+
+    await StockMovement.create({
+      product: product._id,
+      type: "SALE",
+      quantity: quantity,
+      previousStock: prevQuantity,
+      newStock: newQuantity
+    })
+
+    res.status(200).json({
+      success: true,
+      message: "Product sold successfully",
+      data: product
+    })
+  }
+  catch(error){
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+}
+
