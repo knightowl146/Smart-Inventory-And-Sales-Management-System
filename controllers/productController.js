@@ -188,8 +188,8 @@ const deleteProduct = async (req,res)=>{
 };
 
 
-//<-----------------PURCHASE STOCK--------------->
-const purchaseStock = async (req,res)=>{
+//<-----------------PURCHASE PRODUCT--------------->
+const purchaseProduct = async (req,res)=>{
 
 
   try{
@@ -350,4 +350,3 @@ const sellProduct = async (req,res)=>{
     });
   }
 }
-
