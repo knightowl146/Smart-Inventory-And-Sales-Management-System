@@ -1,71 +1,70 @@
+const mongoose = require("mongoose");
 const Product = require("../models/Product");
-const StockMovement = require("../models/StockMovements")
+const StockMovement = require("../models/StockMovements");
 
 //<------------CREATE PRODUCT----------->
-const createProduct = async (req,res) =>{
-
-    try{
-        // Destructure req.body
-        const {name, sku, category,purchasePrice,sellingPrice,quantity,description} = req.body;
-        // Validation
-        if(!name || !sku || !category || purchasePrice==null || sellingPrice==null || quantity == null || !description){
-            return res.status(400).json({
-                success: false,
-                message:"All fields are required"
-            });
-        }
-        // MongoDB query to create a new product
-        const product = await Product.create({
-            name,
-            sku,
-            category,
-            purchasePrice,
-            sellingPrice,
-            quantity,
-            description
-        });
-        // Respond with success message
-        res.status(201).json({
-            success: true,
-            message: "Product created successfully",
-            data: product
-        });
-    }catch(error){
-        // Error handling
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server error"
-        });
+const createProduct = async (req, res) => {
+  try {
+    // Destructure req.body
+    const { name, sku, category, purchasePrice, sellingPrice, quantity, description } = req.body;
+    // Validation
+    if (!name || !sku || !category || purchasePrice == null || sellingPrice == null || quantity == null || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
     }
-}
+    // MongoDB query to create a new product
+    const product = await Product.create({
+      name,
+      sku,
+      category,
+      purchasePrice,
+      sellingPrice,
+      quantity,
+      description,
+    });
+    // Respond with success message
+    res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      data: product,
+    });
+  } catch (error) {
+    // Error handling
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server error",
+    });
+  }
+};
+
 //<-----------GET ALL PRODUCTS------------->
-const getProducts = async (req,res) =>{
-    try{     
-        const products = await Product.find();
+const getProducts = async (req, res) => {
+  try {
+    const products = await Product.find();
 
-        return res.status(200).json({
-            success: true,
-            message: "Products fetched successfully",
-            data: products
-        })
-    }
-    catch(err){
-        console.log(err);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        })
-    }   
-}
+    return res.status(200).json({
+      success: true,
+      message: "Products fetched successfully",
+      data: products,
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 //<-------------SEARCH PRODUCT BY ID--------------->
-const getProductById = async(req,res) =>{
-
-  try{
-
-    const {id} = req.params;
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
     //Validating id
     const isValid = mongoose.Types.ObjectId.isValid(id);
-    if(!isValid){
+    if (!isValid) {
       return res.status(400).json({
         success: false,
         message: "Invalid id",
@@ -74,171 +73,154 @@ const getProductById = async(req,res) =>{
     const product = await Product.findById(id);
 
     // Product doesn't exist
-    if(!product){
+    if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product doesn't exist"
+        message: "Product doesn't exist",
       });
     }
-    //Product found 
+    //Product found
     return res.status(200).json({
       success: true,
       message: "Product found!",
-      data: product
+      data: product,
     });
-  }
-  catch(err){
+  } catch (err) {
     console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
-}
-//<------------------UPDATE PRODUCT----------------->
-const updateProduct = async (req,res) =>{
+};
 
-  try{
+//<------------------UPDATE PRODUCT----------------->
+const updateProduct = async (req, res) => {
+  try {
     // Validating id
     const isValid = mongoose.Types.ObjectId.isValid(req.params.id);
-    if(!isValid){
+    if (!isValid) {
       return res.status(404).json({
         success: false,
-        message: "Invalid id"
-      })
-    };
+        message: "Invalid id",
+      });
+    }
     // Validating requested updates
-    const allowedUpdates = new Set([
-      "name",
-      "price",
-      "quantity",
-      "category",
-      "description"
-    ]);
+    const allowedUpdates = new Set(["name", "price", "quantity", "category", "description"]);
     const updates = Object.keys(req.body);
-    const isValidUpdate = updates.every( (field)=> allowedUpdates.has(field));
-    if(!isValidUpdate){
+    const isValidUpdate = updates.every((field) => allowedUpdates.has(field));
+    if (!isValidUpdate) {
       return res.status(400).json({
         success: false,
-        message: "Invalid updates"
-      })
-    };
+        message: "Invalid updates",
+      });
+    }
     // Updating product
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true
-      }
-    );
-  
-    if(!product){
+    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!product) {
       return res.status(400).json({
-      success: false,
-      message: "Product not found"
-    })
+        success: false,
+        message: "Product not found",
+      });
     }
     return res.status(200).json({
       success: true,
       message: "Product updated",
-      data: product
+      data: product,
     });
-  }
-  catch(err){
+  } catch (err) {
     console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
-}
+};
 
 //<----------DELETE PRODUCT----------->
-const deleteProduct = async (req,res)=>{
-  try{
-    const {id} = req.params;
+const deleteProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
     const isValid = mongoose.Types.ObjectId.isValid(id);
-    if(!isValid){
+    if (!isValid) {
       return res.status(400).json({
         success: false,
-        message: "Invalid id"
+        message: "Invalid id",
       });
     }
     const product = await Product.findByIdAndDelete(id);
-    if(!product){
+    if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product not found"
+        message: "Product not found",
       });
     }
     return res.status(200).json({
       success: true,
       message: "Product deleted",
-      data: product
+      data: product,
     });
-  }
-  catch(err){
+  } catch (err) {
     console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
-  };
+  }
 };
 
-
 //<-----------------PURCHASE PRODUCT--------------->
-const purchaseProduct = async (req,res)=>{
-
-
-  try{
-    const {quantity} = req.body;
-    const {id} = req.params;
+const purchaseProduct = async (req, res) => {
+  try {
+    const { quantity } = req.body;
+    const { id } = req.params;
     const isValidId = mongoose.Types.ObjectId.isValid(id);
-    if(!isValidId){
+    if (!isValidId) {
       return res.status(400).json({
         success: false,
-        message: "Invalid id"
+        message: "Invalid id",
       });
     }
-    if(typeof quantity !== 'number' || isNaN(quantity)){
+    if (typeof quantity !== "number" || isNaN(quantity)) {
       return res.status(400).json({
         success: false,
-        message: "Quantity is required and must be a number"
+        message: "Quantity is required and must be a number",
       });
+    }
+    if (quantity <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be greater than 0",
+      });
+    }
+    if (!Number.isInteger(quantity)) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be an integer",
+      });
+    }
 
-    }
-    if(quantity <= 0){
-      return res.status(400).json({
-        success: false,
-        message: "Quantity must be greater than 0"
-      });
-    }
-    if(!Number.isInteger(quantity)){
-      return res.status(400).json({
-        success: false,
-        message: "Quantity must be an integer"
-      });
-    }
-    
     const product = await Product.findByIdAndUpdate(
-        id,
-        {
-            $inc: {
-                quantity: quantity
-            }
+      id,
+      {
+        $inc: {
+          quantity: quantity,
         },
-        {
-          new: true,
-          runValidators: true
-        }
-    )
-    if(!product){
-        return res.status(404).json({
-            success:false,
-            message:"Product not found"
-        });
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
     }
 
     const newQuantity = product.quantity;
@@ -247,84 +229,82 @@ const purchaseProduct = async (req,res)=>{
       product: product._id,
       type: "PURCHASE",
       quantity: quantity,
-      previousStock: prevQuantity,
-      newStock: newQuantity
-    })
+      prevQuantity: prevQuantity,
+      newQuantity: newQuantity,
+    });
 
     return res.status(200).json({
-        success:true,
-        message: "Stock added successfully",
-        data: product
+      success: true,
+      message: "Stock added successfully",
+      data: product,
     });
-    
-  }
-  catch(err){
+  } catch (err) {
     console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
-  };
+  }
 };
 
-
 //<-----------------SELL PRODUCT--------------->
-const sellProduct = async (req,res)=>{
-
-  try{
-    const {quantity} = req.body;
-    const {id} = req.params;
+const sellProduct = async (req, res) => {
+  try {
+    const { quantity } = req.body;
+    const { id } = req.params;
     const isValidId = mongoose.Types.ObjectId.isValid(id);
-    if(!isValidId){
+    if (!isValidId) {
       return res.status(400).json({
         success: false,
-        message: "Invalid id"
+        message: "Invalid id",
       });
     }
-    if(typeof quantity !== 'number' || isNaN(quantity)){
+    if (typeof quantity !== "number" || isNaN(quantity)) {
       return res.status(400).json({
         success: false,
-        message: "Quantity is required and must be a number"
-      });
-
-    }
-    if(quantity <= 0){
-      return res.status(400).json({
-        success: false,
-        message: "Quantity must be greater than 0"
+        message: "Quantity is required and must be a number",
       });
     }
-    if(!Number.isInteger(quantity)){
+    if (quantity <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Quantity must be an integer"
+        message: "Quantity must be greater than 0",
+      });
+    }
+    if (!Number.isInteger(quantity)) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be an integer",
       });
     }
 
     // here we are using filters to check if the sale is valid
-    const product = await Product.findOneAndUpdate({
-      _id:id,
-      quantity: {
-        $gte: quantity
+    const product = await Product.findOneAndUpdate(
+      {
+        _id: id,
+        quantity: {
+          $gte: quantity,
+        },
+      },
+      {
+        $inc: {
+          quantity: -quantity,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
       }
-    },
-    {
-      $inc:{
-        quantity: -quantity
-      }
-    },
-    {
-      new: true,
-      runValidators: true
-    })
+    );
 
     // product == null when the filter rejects the sale
-    if(!product){
-      res.status(404).json({
+    if (!product) {
+      return res.status(400).json({
         success: false,
-        message: "Insufficient stock"
-      })
+        message: "Insufficient stock or product not found",
+      });
     }
+
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity + quantity;
 
@@ -332,21 +312,30 @@ const sellProduct = async (req,res)=>{
       product: product._id,
       type: "SALE",
       quantity: quantity,
-      previousStock: prevQuantity,
-      newStock: newQuantity
-    })
+      prevQuantity: prevQuantity,
+      newQuantity: newQuantity,
+    });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Product sold successfully",
-      data: product
-    })
-  }
-  catch(error){
+      data: product,
+    });
+  } catch (error) {
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
-}
+};
+
+module.exports = {
+  createProduct,
+  getProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+  purchaseProduct,
+  sellProduct,
+};

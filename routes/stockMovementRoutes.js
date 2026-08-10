@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
 
-const {getMovements} = require("../controllers/stockMovementController");
+const { getMovements, productMovements } = require("../controllers/stockMovementController");
 
-router.get("/",getMovements);
-router.get("/product/:id",getProductMovements);
+router.get("/", getMovements);
+router.get("/product/:id", productMovements);
 
 module.exports = router;

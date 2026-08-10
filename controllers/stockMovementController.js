@@ -1,80 +1,77 @@
-const StockMovement = require("../models/StockMovements")
+const mongoose = require("mongoose");
+const StockMovement = require("../models/StockMovements");
 
 //----------All product movements----------//
-const getMovements = async(req,res)=>{
-  try{
-    const {type} = req.query;
+const getMovements = async (req, res) => {
+  try {
+    const { type } = req.query;
 
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
-    
+
     //Pagination Validation
-    if(!Number.isInteger(page) || page <1){
+    if (!Number.isInteger(page) || page < 1) {
       return res.status(400).json({
         success: false,
-        message: "Page must be a positive integer"
-      })
+        message: "Page must be a positive integer",
+      });
     }
-    if(!Number.isInteger(limit) || limit<1 || limit >100){
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
       return res.status(400).json({
         success: false,
-        message: "Limit must be an integer between 1 and 100"
-      })
+        message: "Limit must be an integer between 1 and 100",
+      });
     }
 
     //Type Validation
-
-    if(type && !["PURCHASE","SALE"].includes(type)){
+    if (type && !["PURCHASE", "SALE"].includes(type)) {
       return res.status(400).json({
         success: false,
-        message: "Type must be either PURCHASE or SALE"
+        message: "Type must be either PURCHASE or SALE",
       });
     }
     const filter = {};
 
-    if(type){
-        filter.type = type;
+    if (type) {
+      filter.type = type;
     }
-    const skip = (page-1)*limit;
+    const skip = (page - 1) * limit;
     const totalMovements = await StockMovement.countDocuments(filter);
     const movements = await StockMovement.find(filter)
-    .populate("product","name")
-    .sort({createdAt:-1})
-    .skip(skip)
-    .limit(limit);
+      .populate("product", "name")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       data: movements,
-      pagination:{
+      pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalMovements/limit),
+        totalPages: Math.ceil(totalMovements / limit),
         totalMovements: totalMovements,
-        limit
-      }
+        limit,
+      },
     });
-  }
-  catch(error){
+  } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
-}
+};
 
 //<-------- Product Movements---------->
-const productMovements = async(req,res)=>{
+const productMovements = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type } = req.query;
 
-  try{
-    
-    const {id} = req.params;
-    const {type} = req.query;
-
-    if(!mongoose.Types.ObjectId.isValid(id)){
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid id"
+        message: "Invalid id",
       });
     }
 
@@ -82,60 +79,57 @@ const productMovements = async(req,res)=>{
     const limit = parseInt(req.query.limit) || 10;
     if (!Number.isInteger(page) || page < 1) {
       return res.status(400).json({
-          success: false,
-          message: "Page must be a positive integer"
+        success: false,
+        message: "Page must be a positive integer",
       });
     }
 
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
       return res.status(400).json({
         success: false,
-        message: "Limit must be an integer between 1 and 100"
+        message: "Limit must be an integer between 1 and 100",
       });
     }
 
-    if(type && !["PURCHASE","SALE"].includes(type)){
+    if (type && !["PURCHASE", "SALE"].includes(type)) {
       return res.status(400).json({
-        success:false,
-        message:"Type must be either PURCHASE or SALE"
+        success: false,
+        message: "Type must be either PURCHASE or SALE",
       });
     }
 
     const filter = {
-      product: id
+      product: id,
     };
-    if(type){
+    if (type) {
       filter.type = type;
     }
 
-
-    const skip = (page-1)*limit;
+    const skip = (page - 1) * limit;
     const totalMovements = await StockMovement.countDocuments(filter);
 
-    const movements = await StockMovement.find({
-      product:id
-    })
-    .populate("product","name")
-    .sort({createdAt: -1})
-    .skip(skip)
-    .limit(limit);
+    const movements = await StockMovement.find(filter)
+      .populate("product", "name")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
-      success:true,
+      success: true,
       data: movements,
-      pagination:{
+      pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalMovements/limit),
+        totalPages: Math.ceil(totalMovements / limit),
         totalMovements: totalMovements,
-        limit:limit
-      }
+        limit: limit,
+      },
     });
-  }catch(err){
+  } catch (err) {
     return res.status(500).json({
       success: false,
-      message: err.message
+      message: err.message,
     });
-  };
-}
+  }
+};
 
-module.exports = {getMovements};
+module.exports = { getMovements, productMovements };
