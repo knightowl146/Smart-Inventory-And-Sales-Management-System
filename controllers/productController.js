@@ -14,6 +14,21 @@ const createProduct = async (req, res) => {
         message: "All fields are required",
       });
     }
+    //Validation for prices and quantities
+    if(quantity<=0 || !Number.isInteger(quantity) || purchasePrice<=0 || sellingPrice<=0 || !Number.isInteger(purchasePrice) || !Number.isInteger(sellingPrice)){
+      return res.status(400).json({
+        success: false,
+        message: "Quantity and prices must be positive integers",
+      });
+    }
+    // Check for duplicate sku
+    const exist = await Product.find({sku});
+    if (exist.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Product already exists",
+      });
+    }
     // MongoDB query to create a new product
     const product = await Product.create({
       name,
@@ -42,15 +57,59 @@ const createProduct = async (req, res) => {
 //<-----------GET ALL PRODUCTS------------->
 const getProducts = async (req, res) => {
   try {
-    const products = await Product.find();
+    const { category, search } = req.query;
+
+    const page = req.query.page !== undefined ? Number(req.query.page) : 1;
+    const limit = req.query.limit !== undefined ? Number(req.query.limit) : 10;
+
+    // Pagination Validation
+    if (!Number.isInteger(page) || page < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Page must be a positive integer",
+      });
+    }
+
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Limit must be an integer between 1 and 100",
+      });
+    }
+
+    const filter = {};
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { sku: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+    const totalProducts = await Product.countDocuments(filter);
+    const products = await Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       message: "Products fetched successfully",
       data: products,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalProducts / limit) || 1,
+        totalProducts: totalProducts,
+        limit: limit,
+      },
     });
   } catch (err) {
-    console.log(err);
+    console.error(err);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -206,16 +265,10 @@ const purchaseProduct = async (req, res) => {
 
     const product = await Product.findByIdAndUpdate(
       id,
-      {
-        $inc: {
-          quantity: quantity,
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
+      { $inc: { quantity: quantity } },
+      { new: true, runValidators: true }
     );
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -225,6 +278,7 @@ const purchaseProduct = async (req, res) => {
 
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity - quantity;
+
     await StockMovement.create({
       product: product._id,
       type: "PURCHASE",
@@ -278,23 +332,11 @@ const sellProduct = async (req, res) => {
       });
     }
 
-    // here we are using filters to check if the sale is valid
+    // Filter checks if stock is sufficient before updating
     const product = await Product.findOneAndUpdate(
-      {
-        _id: id,
-        quantity: {
-          $gte: quantity,
-        },
-      },
-      {
-        $inc: {
-          quantity: -quantity,
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
+      { _id: id, quantity: { $gte: quantity } },
+      { $inc: { quantity: -quantity } },
+      { new: true, runValidators: true }
     );
 
     // product == null when the filter rejects the sale

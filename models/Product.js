@@ -37,6 +37,12 @@ const productSchema = new mongoose.Schema({
         min: 0,
         default: 0
     },
+    lowStockThreshold: {
+        type: Number,
+        required: true,
+        min: 0,
+        default: 10
+    },
     description:{
         type:String,
         required: true

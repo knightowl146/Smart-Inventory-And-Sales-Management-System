@@ -15,7 +15,9 @@ app.use(express.json());
 
 //Routes
 app.use("/api/products", productRoutes);
+app.use("/products", productRoutes);
 app.use("/api/movements", stockMovementRoutes);
+app.use("/movements", stockMovementRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to Smart Inventory API");

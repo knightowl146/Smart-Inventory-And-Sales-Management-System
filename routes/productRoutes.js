@@ -17,6 +17,8 @@ router.get("/:id", getProductById);
 router.patch("/:id", updateProduct);
 router.delete("/:id", deleteProduct);
 router.post("/:id/purchase", purchaseProduct);
+router.put("/:id/purchase", purchaseProduct);
 router.post("/:id/sell", sellProduct);
+router.put("/:id/sell", sellProduct);
 
 module.exports = router;

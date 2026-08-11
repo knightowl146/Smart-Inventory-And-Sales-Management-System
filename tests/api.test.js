@@ -65,11 +65,36 @@ describe("POST /api/products — Create Product", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("GET /api/products — Get All Products", () => {
-  it("200: returns a list of products", async () => {
+  it("200: returns a list of products with default pagination metadata", async () => {
     const res = await request(app).get("/api/products");
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body).toHaveProperty("pagination");
+    expect(res.body.pagination).toHaveProperty("currentPage", 1);
+    expect(res.body.pagination).toHaveProperty("limit", 10);
+  });
+
+  it("200: respects custom page and limit query params", async () => {
+    const res = await request(app).get("/api/products?page=1&limit=5");
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.pagination.currentPage).toBe(1);
+    expect(res.body.pagination.limit).toBe(5);
+  });
+
+  it("400: returns error for invalid page parameter", async () => {
+    const res = await request(app).get("/api/products?page=0");
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Page must be a positive integer");
+  });
+
+  it("400: returns error for limit > 100", async () => {
+    const res = await request(app).get("/api/products?limit=150");
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Limit must be an integer between 1 and 100");
   });
 });
 
@@ -128,11 +153,20 @@ describe("PATCH /api/products/:id — Update Product", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("POST /api/products/:id/purchase — Purchase (Add Stock)", () => {
-  it("200: adds stock successfully", async () => {
+describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () => {
+  it("200: adds stock successfully via POST", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
       .send({ quantity: 50 });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toBe("Stock added successfully");
+  });
+
+  it("200: adds stock successfully via PUT", async () => {
+    const res = await request(app)
+      .put(`/products/${createdProductId}/purchase`)
+      .send({ quantity: 10 });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Stock added successfully");
@@ -334,6 +368,35 @@ describe("GET /api/movements/product/:id — Get Movements By Product", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GET /api/movements/low-stock — Get Low Stock Products", () => {
+  it("200: returns low stock products with valid pagination", async () => {
+    const res = await request(app).get("/api/movements/low-stock");
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body).toHaveProperty("pagination");
+    expect(res.body.pagination).toHaveProperty("currentPage", 1);
+    expect(res.body.pagination).toHaveProperty("limit", 10);
+    expect(res.body.pagination.totalPages).not.toBeNaN();
+  });
+
+  it("400: returns error for invalid page parameter", async () => {
+    const res = await request(app).get("/api/movements/low-stock?page=-1");
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Page must be a positive integer");
+  });
+
+  it("400: returns error for invalid limit parameter", async () => {
+    const res = await request(app).get("/api/movements/low-stock?limit=200");
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Limit must be an integer between 1 and 100");
   });
 });
 
