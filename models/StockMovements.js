@@ -34,4 +34,4 @@ const stockMovementsSchema = new mongoose.Schema(
     }
 );
 
-module.exports = mongoose.model("StockMovement",stockMovementsSchema);
+module.exports = mongoose.models.StockMovement || mongoose.model("StockMovement", stockMovementsSchema);

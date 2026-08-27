@@ -6,7 +6,7 @@ const StockMovement = require("../models/StockMovements");
 const createProduct = async (req, res) => {
   try {
     // Destructure req.body
-    const { name, sku, category, purchasePrice, sellingPrice, quantity, description } = req.body;
+    const { name, sku, category, purchasePrice, sellingPrice, quantity,lowStockThreshold ,description } = req.body;
     // Validation
     if (!name || !sku || !category || purchasePrice == null || sellingPrice == null || quantity == null || !description) {
       return res.status(400).json({
@@ -19,6 +19,12 @@ const createProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Quantity and prices must be positive integers",
+      });
+    }
+    if(lowStockThreshold !== undefined && lowStockThreshold !== null && (typeof lowStockThreshold !== "number" || lowStockThreshold < 0)){
+      return res.status(400).json({
+        success: false,
+        message: "Low Stock threshold must be greater than or equal to 0"
       });
     }
     // Check for duplicate sku
@@ -37,6 +43,7 @@ const createProduct = async (req, res) => {
       purchasePrice,
       sellingPrice,
       quantity,
+      lowStockThreshold,
       description,
     });
     // Respond with success message
@@ -165,13 +172,19 @@ const updateProduct = async (req, res) => {
       });
     }
     // Validating requested updates
-    const allowedUpdates = new Set(["name", "price", "quantity", "category", "description"]);
+    const allowedUpdates = new Set(["name", "price", "purchasePrice", "sellingPrice", "quantity", "category", "lowStockThreshold" ,"description"]);
     const updates = Object.keys(req.body);
     const isValidUpdate = updates.every((field) => allowedUpdates.has(field));
     if (!isValidUpdate) {
       return res.status(400).json({
         success: false,
         message: "Invalid updates",
+      });
+    }
+    if (req.body.lowStockThreshold !== undefined && req.body.lowStockThreshold !== null && (typeof req.body.lowStockThreshold !== "number" || req.body.lowStockThreshold < 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Low Stock threshold must be greater than or equal to 0",
       });
     }
     // Updating product

@@ -424,3 +424,127 @@ describe("DELETE /api/products/:id — Delete Product", () => {
     expect(res.body.message).toBe("Invalid id");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LOW STOCK THRESHOLD FEATURE TESTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("lowStockThreshold Feature Tests", () => {
+  it("defaults lowStockThreshold to 10 when not provided in creation", async () => {
+    const res = await request(app).post("/api/products").send({
+      name: "Default Threshold Item",
+      sku: "DTH-001",
+      category: "Tools",
+      purchasePrice: 15,
+      sellingPrice: 30,
+      quantity: 50,
+      description: "Item to test default threshold",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.lowStockThreshold).toBe(10);
+  });
+
+  it("sets custom lowStockThreshold on creation", async () => {
+    const res = await request(app).post("/api/products").send({
+      name: "Custom Threshold Item",
+      sku: "CTH-002",
+      category: "Tools",
+      purchasePrice: 20,
+      sellingPrice: 40,
+      quantity: 50,
+      lowStockThreshold: 15,
+      description: "Item with custom threshold",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.lowStockThreshold).toBe(15);
+  });
+
+  it("rejects creation with negative lowStockThreshold", async () => {
+    const res = await request(app).post("/api/products").send({
+      name: "Negative Threshold Item",
+      sku: "NTH-003",
+      category: "Tools",
+      purchasePrice: 20,
+      sellingPrice: 40,
+      quantity: 50,
+      lowStockThreshold: -5,
+      description: "Item with negative threshold",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Low Stock threshold must be greater than or equal to 0");
+  });
+
+  it("updates lowStockThreshold via PATCH", async () => {
+    const createRes = await request(app).post("/api/products").send({
+      name: "Update Threshold Item",
+      sku: "UTH-004",
+      category: "Tools",
+      purchasePrice: 25,
+      sellingPrice: 50,
+      quantity: 50,
+      lowStockThreshold: 10,
+      description: "Item to update threshold",
+    });
+    const productId = createRes.body.data._id;
+
+    const patchRes = await request(app)
+      .patch(`/api/products/${productId}`)
+      .send({ lowStockThreshold: 25 });
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.body.data.lowStockThreshold).toBe(25);
+  });
+
+  it("rejects updating lowStockThreshold to negative value via PATCH", async () => {
+    const createRes = await request(app).post("/api/products").send({
+      name: "Bad Update Item",
+      sku: "BUTH-005",
+      category: "Tools",
+      purchasePrice: 25,
+      sellingPrice: 50,
+      quantity: 50,
+      lowStockThreshold: 10,
+      description: "Item to test bad update",
+    });
+    const productId = createRes.body.data._id;
+
+    const patchRes = await request(app)
+      .patch(`/api/products/${productId}`)
+      .send({ lowStockThreshold: -10 });
+    expect(patchRes.statusCode).toBe(400);
+    expect(patchRes.body.success).toBe(false);
+  });
+
+  it("correctly filters products in GET /api/movements/low-stock based on custom thresholds", async () => {
+    const prodLow = await request(app).post("/api/products").send({
+      name: "Low Stock Item A",
+      sku: "LSA-001",
+      category: "Alerts",
+      purchasePrice: 10,
+      sellingPrice: 20,
+      quantity: 4,
+      lowStockThreshold: 5,
+      description: "Low stock item",
+    });
+
+    const prodNormal = await request(app).post("/api/products").send({
+      name: "Normal Stock Item B",
+      sku: "NSB-002",
+      category: "Alerts",
+      purchasePrice: 10,
+      sellingPrice: 20,
+      quantity: 10,
+      lowStockThreshold: 5,
+      description: "Normal stock item",
+    });
+
+    const res = await request(app).get("/api/movements/low-stock");
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const lowStockSkus = res.body.data.map((p) => p.sku);
+    expect(lowStockSkus).toContain("LSA-001");
+    expect(lowStockSkus).not.toContain("NSB-002");
+  });
+});
+
