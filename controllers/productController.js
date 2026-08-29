@@ -6,16 +6,16 @@ const StockMovement = require("../models/StockMovements");
 const createProduct = async (req, res) => {
   try {
     // Destructure req.body
-    const { name, sku, category, purchasePrice, sellingPrice, quantity,lowStockThreshold ,description } = req.body;
+    const { name, sku, category, purchasePrice, sellingPrice,quantity, lowStockThreshold, description } = req.body || {};
     // Validation
-    if (!name || !sku || !category || purchasePrice == null || sellingPrice == null || quantity == null || !description) {
+    if (!name || !sku || !category || purchasePrice == null || sellingPrice == null || unitPrice == null || quantity == null || !description) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
     //Validation for prices and quantities
-    if(quantity<=0 || !Number.isInteger(quantity) || purchasePrice<=0 || sellingPrice<=0 || !Number.isInteger(purchasePrice) || !Number.isInteger(sellingPrice)){
+    if(quantity<=0 || !Number.isInteger(quantity) || purchasePrice<=0 || sellingPrice<=0 || !Number.isInteger(purchasePrice) || !Number.isInteger(sellingPrice) ){
       return res.status(400).json({
         success: false,
         message: "Quantity and prices must be positive integers",
@@ -42,6 +42,7 @@ const createProduct = async (req, res) => {
       category,
       purchasePrice,
       sellingPrice,
+      unitPrice,
       quantity,
       lowStockThreshold,
       description,
@@ -172,8 +173,8 @@ const updateProduct = async (req, res) => {
       });
     }
     // Validating requested updates
-    const allowedUpdates = new Set(["name", "price", "purchasePrice", "sellingPrice", "quantity", "category", "lowStockThreshold" ,"description"]);
-    const updates = Object.keys(req.body);
+    const allowedUpdates = new Set(["name", "price", "purchasePrice", "sellingPrice","quantity", "category", "lowStockThreshold" ,"description"]);
+    const updates = Object.keys(req.body || {});
     const isValidUpdate = updates.every((field) => allowedUpdates.has(field));
     if (!isValidUpdate) {
       return res.status(400).json({
@@ -181,7 +182,7 @@ const updateProduct = async (req, res) => {
         message: "Invalid updates",
       });
     }
-    if (req.body.lowStockThreshold !== undefined && req.body.lowStockThreshold !== null && (typeof req.body.lowStockThreshold !== "number" || req.body.lowStockThreshold < 0)) {
+    if (req.body?.lowStockThreshold !== undefined && req.body?.lowStockThreshold !== null && (typeof req.body.lowStockThreshold !== "number" || req.body.lowStockThreshold < 0)) {
       return res.status(400).json({
         success: false,
         message: "Low Stock threshold must be greater than or equal to 0",
@@ -248,7 +249,7 @@ const deleteProduct = async (req, res) => {
 //<-----------------PURCHASE PRODUCT--------------->
 const purchaseProduct = async (req, res) => {
   try {
-    const { quantity } = req.body;
+    const { quantity,unitPrice } = req.body || {};
     const { id } = req.params;
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     if (!isValidId) {
@@ -257,6 +258,18 @@ const purchaseProduct = async (req, res) => {
         message: "Invalid id",
       });
     }
+    if (typeof unitPrice !== "number" || isNaN(unitPrice)) {
+      return res.status(400).json({
+        success: false,
+        message: "Unit price is required and must be a number",
+      });
+    }
+    if (unitPrice < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Unit price cannot be negative",
+  });
+}
     if (typeof quantity !== "number" || isNaN(quantity)) {
       return res.status(400).json({
         success: false,
@@ -296,6 +309,7 @@ const purchaseProduct = async (req, res) => {
       product: product._id,
       type: "PURCHASE",
       quantity: quantity,
+      unitPrice: unitPrice,
       prevQuantity: prevQuantity,
       newQuantity: newQuantity,
     });
@@ -317,13 +331,25 @@ const purchaseProduct = async (req, res) => {
 //<-----------------SELL PRODUCT--------------->
 const sellProduct = async (req, res) => {
   try {
-    const { quantity } = req.body;
+    const { quantity,unitPrice } = req.body || {};
     const { id } = req.params;
     const isValidId = mongoose.Types.ObjectId.isValid(id);
     if (!isValidId) {
       return res.status(400).json({
         success: false,
         message: "Invalid id",
+      });
+    }
+    if (typeof unitPrice !== "number" || isNaN(unitPrice)) {
+      return res.status(400).json({
+        success: false,
+        message: "Unit price is required and must be a number",
+      });
+    }
+    if (unitPrice < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Unit price cannot be negative",
       });
     }
     if (typeof quantity !== "number" || isNaN(quantity)) {
@@ -367,6 +393,7 @@ const sellProduct = async (req, res) => {
       product: product._id,
       type: "SALE",
       quantity: quantity,
+      unitPrice: unitPrice,
       prevQuantity: prevQuantity,
       newQuantity: newQuantity,
     });
@@ -380,7 +407,7 @@ const sellProduct = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error.message,
     });
   }
 };

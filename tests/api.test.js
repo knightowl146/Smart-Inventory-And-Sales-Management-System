@@ -30,6 +30,7 @@ const validProduct = () => ({
   category: "Electronics",
   purchasePrice: 50,
   sellingPrice: 80,
+  unitPrice: 80,
   quantity: 100,
   description: "A test widget for unit tests",
 });
@@ -266,6 +267,13 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
   });
+
+  it("400: handles missing request body or quantity gracefully", async () => {
+    const res = await request(app).post(`/api/products/${createdProductId}/sell`).send();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Quantity is required and must be a number");
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -437,6 +445,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Tools",
       purchasePrice: 15,
       sellingPrice: 30,
+      unitPrice: 30,
       quantity: 50,
       description: "Item to test default threshold",
     });
@@ -451,6 +460,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Tools",
       purchasePrice: 20,
       sellingPrice: 40,
+      unitPrice: 40,
       quantity: 50,
       lowStockThreshold: 15,
       description: "Item with custom threshold",
@@ -466,6 +476,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Tools",
       purchasePrice: 20,
       sellingPrice: 40,
+      unitPrice: 40,
       quantity: 50,
       lowStockThreshold: -5,
       description: "Item with negative threshold",
@@ -482,6 +493,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Tools",
       purchasePrice: 25,
       sellingPrice: 50,
+      unitPrice: 50,
       quantity: 50,
       lowStockThreshold: 10,
       description: "Item to update threshold",
@@ -502,6 +514,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Tools",
       purchasePrice: 25,
       sellingPrice: 50,
+      unitPrice: 50,
       quantity: 50,
       lowStockThreshold: 10,
       description: "Item to test bad update",
@@ -522,6 +535,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Alerts",
       purchasePrice: 10,
       sellingPrice: 20,
+      unitPrice: 20,
       quantity: 4,
       lowStockThreshold: 5,
       description: "Low stock item",
@@ -533,6 +547,7 @@ describe("lowStockThreshold Feature Tests", () => {
       category: "Alerts",
       purchasePrice: 10,
       sellingPrice: 20,
+      unitPrice: 20,
       quantity: 10,
       lowStockThreshold: 5,
       description: "Normal stock item",
@@ -545,6 +560,21 @@ describe("lowStockThreshold Feature Tests", () => {
     const lowStockSkus = res.body.data.map((p) => p.sku);
     expect(lowStockSkus).toContain("LSA-001");
     expect(lowStockSkus).not.toContain("NSB-002");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("GET /api/dashboard/stats — Dashboard Statistics", () => {
+  it("200: returns accurate dashboard statistics including lowStockProducts and totalSales", async () => {
+    const res = await request(app).get("/api/dashboard/stats");
+    expect(res.statusCode).toBe(200);
+    expect(res.body.stats).toBeDefined();
+    expect(typeof res.body.stats.lowStockProducts).toBe("number");
+    expect(typeof res.body.stats.totalSales).toBe("number");
+    expect(res.body.stats.lowStockProducts).toBeGreaterThanOrEqual(1);
   });
 });
 

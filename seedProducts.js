@@ -479,6 +479,12 @@ async function seed() {
     let updatedCount = 0;
 
     for (const item of products) {
+      if (item.unitPrice === undefined) {
+        item.unitPrice = item.sellingPrice;
+      }
+      if (item.lowStockThreshold === undefined) {
+        item.lowStockThreshold = 10;
+      }
       const result = await Product.findOneAndUpdate(
         { sku: item.sku },
         item,

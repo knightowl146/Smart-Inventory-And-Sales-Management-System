@@ -11,12 +11,18 @@ const stockMovementsSchema = new mongoose.Schema(
         type:{
             type: String,
             enum:["PURCHASE","SALE"],
-            required: true
+            required: true,
         },
 
         quantity:{
             type: Number,
-            required: true
+            required: true,
+            min: 1
+        },
+        unitPrice:{
+            type: Number,
+            required: true,
+            min: 0
         },
 
         prevQuantity:{
