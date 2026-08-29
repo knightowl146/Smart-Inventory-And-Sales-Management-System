@@ -6,7 +6,7 @@ const StockMovement = require("../models/StockMovements");
 const createProduct = async (req, res) => {
   try {
     // Destructure req.body
-    const { name, sku, category, purchasePrice, sellingPrice,quantity, lowStockThreshold, description } = req.body || {};
+    const { name, sku, category, purchasePrice, sellingPrice, unitPrice, quantity, lowStockThreshold, description } = req.body || {};
     // Validation
     if (!name || !sku || !category || purchasePrice == null || sellingPrice == null || unitPrice == null || quantity == null || !description) {
       return res.status(400).json({
