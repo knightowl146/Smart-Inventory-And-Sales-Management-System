@@ -9,17 +9,18 @@
 
 const request = require("supertest");
 const mongoose = require("mongoose");
-const { MongoMemoryServer } = require("mongodb-memory-server");
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
 
 // ─── Shared state ──────────────────────────────────────────────────────────────
 let mongoServer;
 let testSupplierId;
+let testCustomerId;
 let productAlphaId, productBetaId, productGammaId;
 
 // ─── Setup ─────────────────────────────────────────────────────────────────────
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
+  mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
 
   // Create a supplier (required for PURCHASE movements)
@@ -29,6 +30,13 @@ beforeAll(async () => {
     phone: "9999999999",
   });
   testSupplierId = supplierRes.body.data._id;
+
+  const customerRes = await request(app).post("/api/customers").send({
+    name: "Turnover Test Customer",
+    email: "turnover@customer.com",
+    phone: "8888888888",
+  });
+  testCustomerId = customerRes.body.customer._id;
 
   // Alpha – Electronics, high movement
   const pA = await request(app).post("/api/products").send({
@@ -72,12 +80,12 @@ beforeAll(async () => {
   // Sell Alpha: 40 units @ 100 each → revenue = 4000, COGS = 40*50 = 2000
   await request(app)
     .post(`/api/products/${productAlphaId}/sell`)
-    .send({ quantity: 40, unitPrice: 100 });
+    .send({ quantity: 40, unitPrice: 100, customerId: testCustomerId });
 
   // Sell Beta: 15 units @ 40 each → revenue = 600, COGS = 15*20 = 300
   await request(app)
     .post(`/api/products/${productBetaId}/sell`)
-    .send({ quantity: 15, unitPrice: 40 });
+    .send({ quantity: 15, unitPrice: 40, customerId: testCustomerId });
 
   // Purchase Alpha: 50 units
   await request(app)

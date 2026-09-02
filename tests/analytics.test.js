@@ -1,16 +1,17 @@
 const request = require("supertest");
 const mongoose = require("mongoose");
-const { MongoMemoryServer } = require("mongodb-memory-server");
+const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
 
 let mongoServer;
 let productAId, productBId, productCId;
 let testSupplierId;
+let testCustomerId;
 
 // ─── Setup & Teardown ──────────────────────────────────────────────────────────
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
+  mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
 
   // Create a test supplier for purchase movements
@@ -20,6 +21,14 @@ beforeAll(async () => {
     phone: "8888888888"
   });
   testSupplierId = supplierRes.body.data._id;
+
+  const customerRes = await request(app).post("/api/customers").send({
+    name: "Analytics Test Customer",
+    email: "analytics@customer.com",
+    phone: "7777777777"
+  });
+  testCustomerId = customerRes.body.customer._id;
+
 
   // Create 3 products
   const pA = await request(app).post("/api/products").send({
@@ -59,9 +68,9 @@ beforeAll(async () => {
   productCId = pC.body.data._id;
 
   // Sell: A=30, B=20, C=10 units  →  A is top seller
-  await request(app).post(`/api/products/${productAId}/sell`).send({ quantity: 30, unitPrice: 60 });
-  await request(app).post(`/api/products/${productBId}/sell`).send({ quantity: 20, unitPrice: 40 });
-  await request(app).post(`/api/products/${productCId}/sell`).send({ quantity: 10, unitPrice: 25 });
+  await request(app).post(`/api/products/${productAId}/sell`).send({ quantity: 30, unitPrice: 60, customerId: testCustomerId });
+  await request(app).post(`/api/products/${productBId}/sell`).send({ quantity: 20, unitPrice: 40, customerId: testCustomerId });
+  await request(app).post(`/api/products/${productCId}/sell`).send({ quantity: 10, unitPrice: 25, customerId: testCustomerId });
 
   // Also do a purchase for analytics endpoints (supplierId required)
   await request(app).post(`/api/products/${productAId}/purchase`).send({ quantity: 50, unitPrice: 30, supplierId: testSupplierId });

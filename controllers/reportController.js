@@ -1,22 +1,8 @@
-"use strict";
-
-/**
- * reportController.js
- *
- * Six structured reports, each supporting optional date-range filtering
- * and optional format output (json | csv | xlsx | pdf) via ?format=.
- *
- * All business logic uses MongoDB aggregations identical in style to
- * the existing analyticsController.js.  No calculations are duplicated
- * inside the export layer — data flows: aggregation → response object →
- * exportService.
- */
-
 const mongoose = require("mongoose");
-const Product        = require("../models/Product");
-const StockMovements = require("../models/StockMovements");
-const Customer       = require("../models/Customer");
-const Supplier       = require("../models/Supplier");
+const Product = require("../models/Product");
+const StockMovement = require("../models/StockMovements");
+const Customer = require("../models/Customer");
+const Supplier = require("../models/Supplier");
 const {
   exportToCSV,
   exportToXLSX,
@@ -24,685 +10,1605 @@ const {
   setDownloadHeaders
 } = require("../services/exportService");
 
-
-/* ------------------------------------------------------------------ */
-/* Shared helpers                                                        */
-/* ------------------------------------------------------------------ */
-
 /**
- * Build a createdAt match object from optional query params.
- * Returns undefined when neither startDate nor endDate is supplied,
- * so the caller can skip adding the field altogether.
+ * Helper function to build date filter consistently across all reports
  */
-const buildDateMatch = (startDate, endDate) => {
-  if (!startDate && !endDate) return undefined;
-
-  const range = {};
-  if (startDate) range.$gte = new Date(startDate);
-  if (endDate) {
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    range.$lte = end;
+function buildDateFilter(startDate, endDate) {
+  const filter = {};
+  
+  if (startDate || endDate) {
+    filter.createdAt = {};
+    
+    if (startDate) {
+      const start = new Date(startDate);
+      if (isNaN(start.getTime())) {
+        throw new Error("Invalid startDate");
+      }
+      filter.createdAt.$gte = start;
+    }
+    
+    if (endDate) {
+      const end = new Date(endDate);
+      if (isNaN(end.getTime())) {
+        throw new Error("Invalid endDate");
+      }
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
   }
-  return range;
-};
+  
+  return filter;
+}
 
-/**
- * Validate a date string.  Returns true when valid or when no string
- * is provided (treating absence as valid).
- */
-const isValidDateOrEmpty = (d) => {
-  if (!d) return true;
-  const parsed = new Date(d);
-  return !isNaN(parsed.getTime());
-};
-
-/** Allowed export formats */
-const ALLOWED_FORMATS = new Set(["json", "csv", "xlsx", "pdf"]);
-
-/**
- * Return a human-readable period description.
- */
-const describePeriod = (startDate, endDate) => {
-  if (startDate && endDate) return `${startDate} to ${endDate}`;
-  if (startDate)            return `From ${startDate}`;
-  if (endDate)              return `Up to ${endDate}`;
-  return "All time";
-};
-
-/**
- * Round a number to 2 decimal places safely.
- */
-const round2 = (n) => (typeof n === "number" ? Number(n.toFixed(2)) : 0);
-
-/**
- * Generic function to send either JSON or a file download.
- *
- * @param {import("express").Response} res
- * @param {string}   format     - "json" | "csv" | "xlsx" | "pdf"
- * @param {string}   title      - Human-readable report name
- * @param {string}   filename   - Download base filename (no extension)
- * @param {Object}   meta       - Period / generatedAt metadata
- * @param {Object}   jsonBody   - Full JSON response body
- * @param {Object[]} flatRows   - Flat, serialisable rows for file exports
- * @param {Array}    columns    - Column definitions for xlsx/pdf
- */
-const sendReport = async (res, format, title, filename, meta, jsonBody, flatRows, columns) => {
-  if (format === "json") {
-    return res.status(200).json(jsonBody);
-  }
-
-  setDownloadHeaders(res, format, filename);
-
-  if (format === "csv") {
-    const fields = columns.map((c) => c.key);
-    return res.send(exportToCSV(flatRows, fields));
-  }
-
-  if (format === "xlsx") {
-    const xlsxColumns = columns.map((c) => ({
-      header: c.label,
-      key:    c.key,
-      width:  c.width || 20
-    }));
-    const buffer = await exportToXLSX(flatRows, title, xlsxColumns);
-    return res.send(buffer);
-  }
-
-  if (format === "pdf") {
-    const pdfCols = columns.map((c) => ({ label: c.label, key: c.key }));
-    const buffer  = await exportToPDF(title, flatRows, pdfCols, meta);
-    return res.send(buffer);
-  }
-};
-
-
-/* ================================================================== */
-/* 1. SALES REPORT                                                      */
-/* GET /api/reports/sales?startDate=&endDate=&format=                  */
-/* ================================================================== */
+//<-----------------SALES REPORT----------------->
 const getSalesReport = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format. Use: json, csv, xlsx, pdf" });
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
     }
-    if (!isValidDateOrEmpty(startDate) || !isValidDateOrEmpty(endDate)) {
-      return res.status(400).json({ success: false, message: "Invalid date format. Use ISO 8601 (YYYY-MM-DD)." });
-    }
-
-    const dateRange = buildDateMatch(startDate, endDate);
-    const matchStage = { type: "SALE", ...(dateRange && { createdAt: dateRange }) };
-
-    /* Summary totals */
-    const [totals] = await StockMovements.aggregate([
+    
+    const matchStage = {
+      type: "SALE",
+      ...dateFilter
+    };
+    
+    // Total sales aggregation
+    const salesSummary = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:             null,
-          totalSales:      { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          totalUnitsSold:  { $sum: "$quantity" },
-          salesCount:      { $sum: 1 }
+          _id: null,
+          totalTransactions: { $sum: 1 },
+          totalUnitsSold: { $sum: "$quantity" },
+          totalRevenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          }
         }
       }
     ]);
-
-    const summary = totals
-      ? {
-          totalSales:     round2(totals.totalSales),
-          totalUnitsSold: totals.totalUnitsSold,
-          salesCount:     totals.salesCount,
-          averageOrderValue: totals.salesCount > 0
-            ? round2(totals.totalSales / totals.salesCount)
-            : 0
-        }
-      : { totalSales: 0, totalUnitsSold: 0, salesCount: 0, averageOrderValue: 0 };
-
-    /* Top selling products */
-    const topProducts = await StockMovements.aggregate([
+    
+    const summary = salesSummary[0] || {
+      totalTransactions: 0,
+      totalUnitsSold: 0,
+      totalRevenue: 0
+    };
+    
+    // Sales by product
+    const salesByProduct = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:          "$product",
-          quantitySold: { $sum: "$quantity" },
-          revenue:      { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          salesCount:   { $sum: 1 }
+          _id: "$product",
+          unitsSold: { $sum: "$quantity" },
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          salesCount: { $sum: 1 }
         }
       },
       {
         $lookup: {
-          from: "products", localField: "_id",
-          foreignField: "_id", as: "product"
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product"
         }
       },
       { $unwind: "$product" },
-      { $sort: { quantitySold: -1 } },
-      { $limit: 10 },
       {
         $project: {
           _id: 0,
-          productId:    "$product._id",
-          name:         "$product.name",
-          category:     "$product.category",
-          quantitySold: 1,
-          revenue:      { $round: ["$revenue", 2] },
-          salesCount:   1
+          productId: "$product._id",
+          productName: "$product.name",
+          category: "$product.category",
+          unitsSold: 1,
+          revenue: { $round: ["$revenue", 2] },
+          salesCount: 1
         }
-      }
+      },
+      { $sort: { revenue: -1 } }
     ]);
-
-    /* Sales by category */
-    const byCategory = await StockMovements.aggregate([
+    
+    // Sales by category
+    const salesByCategory = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $lookup: {
-          from: "products", localField: "product",
-          foreignField: "_id", as: "product"
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
         }
       },
       { $unwind: "$product" },
       {
         $group: {
-          _id:          "$product.category",
-          quantitySold: { $sum: "$quantity" },
-          revenue:      { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          salesCount:   { $sum: 1 }
+          _id: "$product.category",
+          unitsSold: { $sum: "$quantity" },
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          salesCount: { $sum: 1 }
         }
       },
-      { $sort: { revenue: -1 } },
       {
         $project: {
           _id: 0,
-          category:     "$_id",
-          quantitySold: 1,
-          revenue:      { $round: ["$revenue", 2] },
-          salesCount:   1
+          category: "$_id",
+          unitsSold: 1,
+          revenue: { $round: ["$revenue", 2] },
+          salesCount: 1
         }
-      }
+      },
+      { $sort: { revenue: -1 } }
     ]);
-
-    /* Sales over time */
-    const overTime = await StockMovements.aggregate([
+    
+    // Sales over time
+    const salesOverTime = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:         { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          unitsSold:   { $sum: "$quantity" },
-          revenue:     { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          salesCount:  { $sum: 1 }
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          unitsSold: { $sum: "$quantity" },
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          salesCount: { $sum: 1 }
         }
       },
       { $sort: { _id: 1 } },
       {
         $project: {
-          _id: 0, date: "$_id",
-          unitsSold: 1, revenue: 1, salesCount: 1
+          _id: 0,
+          date: "$_id",
+          unitsSold: 1,
+          revenue: { $round: ["$revenue", 2] },
+          salesCount: 1
         }
       }
     ]);
-
-    const meta = {
-      generatedAt: new Date().toISOString(),
-      period:      describePeriod(startDate, endDate),
-      startDate:   startDate || null,
-      endDate:     endDate || null
-    };
-
-    const jsonBody = {
-      success: true,
-      meta,
-      summary,
-      topProducts,
-      byCategory,
-      overTime
-    };
-
-    /* Flat rows for file exports (top products used as primary table) */
-    const flatRows = topProducts.map((p) => ({
-      name:         p.name,
-      category:     p.category,
-      quantitySold: p.quantitySold,
-      revenue:      p.revenue,
-      salesCount:   p.salesCount
-    }));
-
-    const columns = [
-      { label: "Product Name",   key: "name",         width: 30 },
-      { label: "Category",       key: "category",     width: 20 },
-      { label: "Units Sold",     key: "quantitySold", width: 15 },
-      { label: "Revenue ($)",    key: "revenue",      width: 15 },
-      { label: "# Transactions", key: "salesCount",   width: 18 }
-    ];
-
-    return sendReport(res, format, "Sales Report", "sales_report", meta, jsonBody, flatRows, columns);
-
-  } catch (error) {
-    console.error("Sales Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate sales report" });
-  }
-};
-
-
-/* ================================================================== */
-/* 2. PURCHASE REPORT                                                   */
-/* GET /api/reports/purchases?startDate=&endDate=&format=              */
-/* ================================================================== */
-const getPurchaseReport = async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format." });
-    }
-    if (!isValidDateOrEmpty(startDate) || !isValidDateOrEmpty(endDate)) {
-      return res.status(400).json({ success: false, message: "Invalid date format." });
-    }
-
-    const dateRange  = buildDateMatch(startDate, endDate);
-    const matchStage = { type: "PURCHASE", ...(dateRange && { createdAt: dateRange }) };
-
-    /* Summary */
-    const [totals] = await StockMovements.aggregate([
+    
+    // Top customers
+    const topCustomers = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:                  null,
-          totalPurchaseCost:    { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          totalUnitsPurchased:  { $sum: "$quantity" },
-          purchaseCount:        { $sum: 1 }
-        }
-      }
-    ]);
-
-    const summary = totals
-      ? {
-          totalPurchaseCost:   round2(totals.totalPurchaseCost),
-          totalUnitsPurchased: totals.totalUnitsPurchased,
-          purchaseCount:       totals.purchaseCount
-        }
-      : { totalPurchaseCost: 0, totalUnitsPurchased: 0, purchaseCount: 0 };
-
-    /* By product */
-    const byProduct = await StockMovements.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id:              "$product",
-          totalPurchased:   { $sum: "$quantity" },
-          totalCost:        { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          purchaseCount:    { $sum: 1 }
+          _id: "$customer",
+          totalSpent: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          unitsPurchased: { $sum: "$quantity" },
+          salesCount: { $sum: 1 }
         }
       },
+      { $sort: { totalSpent: -1 } },
+      { $limit: 10 },
       {
         $lookup: {
-          from: "products", localField: "_id",
-          foreignField: "_id", as: "product"
+          from: "customers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "customer"
         }
       },
-      { $unwind: "$product" },
-      { $sort: { totalCost: -1 } },
-      { $limit: 20 },
+      { $unwind: "$customer" },
       {
         $project: {
           _id: 0,
-          productId:      "$product._id",
-          name:           "$product.name",
-          category:       "$product.category",
-          totalPurchased: 1,
-          totalCost:      { $round: ["$totalCost", 2] },
-          purchaseCount:  1
+          customerId: "$customer._id",
+          customerName: "$customer.name",
+          totalSpent: { $round: ["$totalSpent", 2] },
+          unitsPurchased: 1,
+          salesCount: 1
         }
       }
     ]);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        summary: {
+          totalTransactions: summary.totalTransactions,
+          totalUnitsSold: summary.totalUnitsSold,
+          totalRevenue: Number(summary.totalRevenue.toFixed(2))
+        },
+        salesByProduct,
+        salesByCategory,
+        salesOverTime,
+        topCustomers
+      }
+    });
+  } catch (error) {
+    console.error("Get Sales Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate sales report"
+    });
+  }
+};
 
-    /* By supplier */
-    const bySupplier = await StockMovements.aggregate([
+//<-----------------PURCHASE REPORT----------------->
+const getPurchaseReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "PURCHASE",
+      ...dateFilter
+    };
+    
+    // Total purchases aggregation
+    const purchaseSummary = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:           "$supplier",
-          totalUnits:    { $sum: "$quantity" },
-          totalCost:     { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
+          _id: null,
+          totalTransactions: { $sum: 1 },
+          totalUnitsPurchased: { $sum: "$quantity" },
+          totalPurchaseCost: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          }
+        }
+      }
+    ]);
+    
+    const summary = purchaseSummary[0] || {
+      totalTransactions: 0,
+      totalUnitsPurchased: 0,
+      totalPurchaseCost: 0
+    };
+    
+    // Purchases by product
+    const purchasesByProduct = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: "$product",
+          unitsPurchased: { $sum: "$quantity" },
+          purchaseCost: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
           purchaseCount: { $sum: 1 }
         }
       },
       {
         $lookup: {
-          from: "suppliers", localField: "_id",
-          foreignField: "_id", as: "supplier"
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product"
         }
       },
-      { $unwind: { path: "$supplier", preserveNullAndEmpty: true } },
-      { $sort: { totalCost: -1 } },
+      { $unwind: "$product" },
       {
         $project: {
           _id: 0,
-          supplierId:    "$_id",
-          supplierName:  { $ifNull: ["$supplier.name", "Unknown"] },
-          totalUnits:    1,
-          totalCost:     { $round: ["$totalCost", 2] },
+          productId: "$product._id",
+          productName: "$product.name",
+          category: "$product.category",
+          unitsPurchased: 1,
+          purchaseCost: { $round: ["$purchaseCost", 2] },
           purchaseCount: 1
         }
-      }
+      },
+      { $sort: { purchaseCost: -1 } }
     ]);
-
-    /* Over time */
-    const overTime = await StockMovements.aggregate([
+    
+    // Purchases by category
+    const purchasesByCategory = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: "$product.category",
+          unitsPurchased: { $sum: "$quantity" },
+          purchaseCost: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          purchaseCount: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          category: "$_id",
+          unitsPurchased: 1,
+          purchaseCost: { $round: ["$purchaseCost", 2] },
+          purchaseCount: 1
+        }
+      },
+      { $sort: { purchaseCost: -1 } }
+    ]);
+    
+    // Purchases over time
+    const purchasesOverTime = await StockMovement.aggregate([
       { $match: matchStage },
       {
         $group: {
-          _id:             { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          unitsPurchased:  { $sum: "$quantity" },
-          totalCost:       { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          purchaseCount:   { $sum: 1 }
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          unitsPurchased: { $sum: "$quantity" },
+          purchaseCost: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          purchaseCount: { $sum: 1 }
         }
       },
       { $sort: { _id: 1 } },
       {
         $project: {
-          _id: 0, date: "$_id",
-          unitsPurchased: 1, totalCost: 1, purchaseCount: 1
+          _id: 0,
+          date: "$_id",
+          unitsPurchased: 1,
+          purchaseCost: { $round: ["$purchaseCost", 2] },
+          purchaseCount: 1
         }
       }
     ]);
-
-    const meta = {
-      generatedAt: new Date().toISOString(),
-      period:      describePeriod(startDate, endDate),
-      startDate:   startDate || null,
-      endDate:     endDate   || null
-    };
-
-    const jsonBody = { success: true, meta, summary, byProduct, bySupplier, overTime };
-
-    const flatRows = byProduct.map((p) => ({
-      name:           p.name,
-      category:       p.category,
-      totalPurchased: p.totalPurchased,
-      totalCost:      p.totalCost,
-      purchaseCount:  p.purchaseCount
-    }));
-
-    const columns = [
-      { label: "Product Name",       key: "name",           width: 30 },
-      { label: "Category",           key: "category",       width: 20 },
-      { label: "Units Purchased",    key: "totalPurchased", width: 18 },
-      { label: "Total Cost ($)",     key: "totalCost",      width: 15 },
-      { label: "# Transactions",     key: "purchaseCount",  width: 18 }
-    ];
-
-    return sendReport(res, format, "Purchase Report", "purchase_report", meta, jsonBody, flatRows, columns);
-
-  } catch (error) {
-    console.error("Purchase Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate purchase report" });
-  }
-};
-
-
-/* ================================================================== */
-/* 3. INVENTORY REPORT                                                  */
-/* GET /api/reports/inventory?format=                                   */
-/* ================================================================== */
-const getInventoryReport = async (req, res) => {
-  try {
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format." });
-    }
-
-    /* Summary / health */
-    const [health] = await Product.aggregate([
+    
+    // Top suppliers
+    const topSuppliers = await StockMovement.aggregate([
+      { $match: matchStage },
       {
         $group: {
-          _id:                  null,
-          totalProducts:        { $sum: 1 },
-          totalQuantity:        { $sum: "$quantity" },
-          inventoryValue:       { $sum: { $multiply: ["$quantity", "$purchasePrice"] } },
-          lowStockProducts:     {
-            $sum: {
-              $cond: [
-                { $and: [{ $gt: ["$quantity", 0] }, { $lte: ["$quantity", "$lowStockThreshold"] }] },
-                1, 0
-              ]
-            }
+          _id: "$supplier",
+          totalPurchaseCost: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
           },
-          outOfStockProducts:   { $sum: { $cond: [{ $eq: ["$quantity", 0] }, 1, 0] } }
+          unitsPurchased: { $sum: "$quantity" },
+          purchaseCount: { $sum: 1 }
         }
-      }
-    ]);
-
-    const summary = health
-      ? {
-          totalProducts:      health.totalProducts,
-          totalQuantity:      health.totalQuantity,
-          inventoryValue:     round2(health.inventoryValue),
-          lowStockProducts:   health.lowStockProducts,
-          outOfStockProducts: health.outOfStockProducts,
-          healthyProducts:    health.totalProducts - health.lowStockProducts - health.outOfStockProducts
+      },
+      { $sort: { totalPurchaseCost: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: "suppliers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "supplier"
         }
-      : { totalProducts: 0, totalQuantity: 0, inventoryValue: 0, lowStockProducts: 0, outOfStockProducts: 0, healthyProducts: 0 };
-
-    /* All products with stock status */
-    const products = await Product.aggregate([
+      },
+      { $unwind: "$supplier" },
       {
         $project: {
           _id: 0,
-          productId:          "$_id",
-          name:               1,
-          sku:                1,
-          category:           1,
-          quantity:           1,
-          lowStockThreshold:  1,
-          purchasePrice:      1,
-          sellingPrice:       1,
-          inventoryValue:     { $round: [{ $multiply: ["$quantity", "$purchasePrice"] }, 2] },
+          supplierId: "$supplier._id",
+          supplierName: "$supplier.name",
+          totalPurchaseCost: { $round: ["$totalPurchaseCost", 2] },
+          unitsPurchased: 1,
+          purchaseCount: 1
+        }
+      }
+    ]);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        summary: {
+          totalTransactions: summary.totalTransactions,
+          totalUnitsPurchased: summary.totalUnitsPurchased,
+          totalPurchaseCost: Number(summary.totalPurchaseCost.toFixed(2))
+        },
+        purchasesByProduct,
+        purchasesByCategory,
+        purchasesOverTime,
+        topSuppliers
+      }
+    });
+  } catch (error) {
+    console.error("Get Purchase Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate purchase report"
+    });
+  }
+};
+
+//<-----------------INVENTORY REPORT----------------->
+const getInventoryReport = async (req, res) => {
+  try {
+    // Current inventory summary
+    const inventorySummary = await Product.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          totalQuantity: { $sum: "$quantity" },
+          totalInventoryValue: {
+            $sum: { $multiply: ["$quantity", "$purchasePrice"] }
+          },
+          lowStockCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gt: ["$quantity", 0] },
+                    { $lte: ["$quantity", "$lowStockThreshold"] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          outOfStockCount: {
+            $sum: {
+              $cond: [{ $eq: ["$quantity", 0] }, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+    
+    const summary = inventorySummary[0] || {
+      totalProducts: 0,
+      totalQuantity: 0,
+      totalInventoryValue: 0,
+      lowStockCount: 0,
+      outOfStockCount: 0
+    };
+    
+    // Inventory by category
+    const inventoryByCategory = await Product.aggregate([
+      {
+        $group: {
+          _id: "$category",
+          productCount: { $sum: 1 },
+          totalQuantity: { $sum: "$quantity" },
+          inventoryValue: {
+            $sum: { $multiply: ["$quantity", "$purchasePrice"] }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          category: "$_id",
+          productCount: 1,
+          totalQuantity: 1,
+          inventoryValue: { $round: ["$inventoryValue", 2] }
+        }
+      },
+      { $sort: { inventoryValue: -1 } }
+    ]);
+    
+    // Low stock products
+    const lowStockProducts = await Product.find({
+      $expr: {
+        $and: [
+          { $gt: ["$quantity", 0] },
+          { $lte: ["$quantity", "$lowStockThreshold"] }
+        ]
+      }
+    })
+      .select("name sku category quantity lowStockThreshold purchasePrice")
+      .sort({ quantity: 1 })
+      .lean();
+    
+    const lowStockProductsFormatted = lowStockProducts.map(product => ({
+      productId: product._id,
+      name: product.name,
+      sku: product.sku,
+      category: product.category,
+      currentStock: product.quantity,
+      lowStockThreshold: product.lowStockThreshold,
+      inventoryValue: Number((product.quantity * product.purchasePrice).toFixed(2))
+    }));
+    
+    // Out of stock products
+    const outOfStockProducts = await Product.find({ quantity: 0 })
+      .select("name sku category lowStockThreshold")
+      .sort({ name: 1 })
+      .lean();
+    
+    const outOfStockProductsFormatted = outOfStockProducts.map(product => ({
+      productId: product._id,
+      name: product.name,
+      sku: product.sku,
+      category: product.category,
+      lowStockThreshold: product.lowStockThreshold
+    }));
+    
+    // Stock movement summary
+    const movementSummary = await StockMovement.aggregate([
+      {
+        $group: {
+          _id: "$type",
+          totalQuantity: { $sum: "$quantity" },
+          transactionCount: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    let totalPurchased = 0;
+    let totalSold = 0;
+    let purchaseTransactions = 0;
+    let saleTransactions = 0;
+    
+    movementSummary.forEach(item => {
+      if (item._id === "PURCHASE") {
+        totalPurchased = item.totalQuantity;
+        purchaseTransactions = item.transactionCount;
+      } else if (item._id === "SALE") {
+        totalSold = item.totalQuantity;
+        saleTransactions = item.transactionCount;
+      }
+    });
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        summary: {
+          totalProducts: summary.totalProducts,
+          totalQuantity: summary.totalQuantity,
+          totalInventoryValue: Number(summary.totalInventoryValue.toFixed(2)),
+          healthyStockCount: summary.totalProducts - summary.lowStockCount - summary.outOfStockCount,
+          lowStockCount: summary.lowStockCount,
+          outOfStockCount: summary.outOfStockCount
+        },
+        inventoryByCategory,
+        lowStockProducts: lowStockProductsFormatted,
+        outOfStockProducts: outOfStockProductsFormatted,
+        stockMovementSummary: {
+          totalPurchased,
+          totalSold,
+          purchaseTransactions,
+          saleTransactions
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Get Inventory Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate inventory report"
+    });
+  }
+};
+
+//<-----------------PROFIT & LOSS REPORT----------------->
+const getProfitLossReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "SALE",
+      ...dateFilter
+    };
+    
+    // Calculate revenue and cost of goods sold
+    const financial = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: null,
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          costOfGoodsSold: {
+            $sum: { $multiply: ["$quantity", "$product.purchasePrice"] }
+          },
+          totalUnitsSold: { $sum: "$quantity" },
+          salesCount: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    const data = financial[0] || {
+      revenue: 0,
+      costOfGoodsSold: 0,
+      totalUnitsSold: 0,
+      salesCount: 0
+    };
+    
+    const grossProfit = data.revenue - data.costOfGoodsSold;
+    const grossMargin = data.revenue > 0 ? (grossProfit / data.revenue) * 100 : 0;
+    
+    // Profit by category
+    const profitByCategory = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: "$product.category",
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          costOfGoodsSold: {
+            $sum: { $multiply: ["$quantity", "$product.purchasePrice"] }
+          },
+          unitsSold: { $sum: "$quantity" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          category: "$_id",
+          revenue: { $round: ["$revenue", 2] },
+          costOfGoodsSold: { $round: ["$costOfGoodsSold", 2] },
+          grossProfit: {
+            $round: [{ $subtract: ["$revenue", "$costOfGoodsSold"] }, 2]
+          },
+          grossMargin: {
+            $round: [
+              {
+                $cond: [
+                  { $gt: ["$revenue", 0] },
+                  {
+                    $multiply: [
+                      { $divide: [
+                        { $subtract: ["$revenue", "$costOfGoodsSold"] },
+                        "$revenue"
+                      ]},
+                      100
+                    ]
+                  },
+                  0
+                ]
+              },
+              2
+            ]
+          },
+          unitsSold: 1
+        }
+      },
+      { $sort: { grossProfit: -1 } }
+    ]);
+    
+    // Profit over time
+    const profitOverTime = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          costOfGoodsSold: {
+            $sum: { $multiply: ["$quantity", "$product.purchasePrice"] }
+          }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          date: "$_id",
+          revenue: { $round: ["$revenue", 2] },
+          costOfGoodsSold: { $round: ["$costOfGoodsSold", 2] },
+          grossProfit: {
+            $round: [{ $subtract: ["$revenue", "$costOfGoodsSold"] }, 2]
+          }
+        }
+      }
+    ]);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        summary: {
+          revenue: Number(data.revenue.toFixed(2)),
+          costOfGoodsSold: Number(data.costOfGoodsSold.toFixed(2)),
+          grossProfit: Number(grossProfit.toFixed(2)),
+          grossMargin: Number(grossMargin.toFixed(2)),
+          totalUnitsSold: data.totalUnitsSold,
+          salesCount: data.salesCount
+        },
+        profitByCategory,
+        profitOverTime
+      }
+    });
+  } catch (error) {
+    console.error("Get Profit & Loss Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate profit & loss report"
+    });
+  }
+};
+
+//<-----------------SUPPLIER REPORT----------------->
+const getSupplierReport = async (req, res) => {
+  try {
+    const { startDate, endDate, supplierId } = req.query;
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "PURCHASE",
+      ...dateFilter
+    };
+    
+    // Filter by supplier if provided
+    if (supplierId) {
+      if (!mongoose.Types.ObjectId.isValid(supplierId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid supplier ID"
+        });
+      }
+      matchStage.supplier = new mongoose.Types.ObjectId(supplierId);
+    }
+    
+    // Supplier performance
+    const supplierPerformance = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: "$supplier",
+          totalPurchases: { $sum: 1 },
+          totalQuantityPurchased: { $sum: "$quantity" },
+          totalPurchaseValue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          lastPurchaseDate: { $max: "$createdAt" },
+          firstPurchaseDate: { $min: "$createdAt" }
+        }
+      },
+      {
+        $lookup: {
+          from: "suppliers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "supplier"
+        }
+      },
+      { $unwind: "$supplier" },
+      {
+        $project: {
+          _id: 0,
+          supplierId: "$supplier._id",
+          supplierName: "$supplier.name",
+          supplierEmail: "$supplier.email",
+          supplierPhone: "$supplier.phone",
+          totalPurchases: 1,
+          totalQuantityPurchased: 1,
+          totalPurchaseValue: { $round: ["$totalPurchaseValue", 2] },
+          averagePurchaseValue: {
+            $round: [
+              { $divide: ["$totalPurchaseValue", "$totalPurchases"] },
+              2
+            ]
+          },
+          lastPurchaseDate: 1,
+          firstPurchaseDate: 1
+        }
+      },
+      { $sort: { totalPurchaseValue: -1 } }
+    ]);
+    
+    // Products by supplier
+    const productsBySupplier = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            supplier: "$supplier",
+            product: "$product"
+          },
+          quantityPurchased: { $sum: "$quantity" },
+          purchaseValue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          purchaseCount: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: "suppliers",
+          localField: "_id.supplier",
+          foreignField: "_id",
+          as: "supplier"
+        }
+      },
+      { $unwind: "$supplier" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id.product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $project: {
+          _id: 0,
+          supplierId: "$supplier._id",
+          supplierName: "$supplier.name",
+          productId: "$product._id",
+          productName: "$product.name",
+          category: "$product.category",
+          quantityPurchased: 1,
+          purchaseValue: { $round: ["$purchaseValue", 2] },
+          purchaseCount: 1
+        }
+      },
+      { $sort: { supplierName: 1, purchaseValue: -1 } }
+    ]);
+    
+    // Summary
+    const totalPurchaseValue = supplierPerformance.reduce(
+      (sum, supplier) => sum + supplier.totalPurchaseValue,
+      0
+    );
+    
+    const totalQuantityPurchased = supplierPerformance.reduce(
+      (sum, supplier) => sum + supplier.totalQuantityPurchased,
+      0
+    );
+    
+    const totalTransactions = supplierPerformance.reduce(
+      (sum, supplier) => sum + supplier.totalPurchases,
+      0
+    );
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        summary: {
+          totalSuppliers: supplierPerformance.length,
+          totalTransactions,
+          totalQuantityPurchased,
+          totalPurchaseValue: Number(totalPurchaseValue.toFixed(2))
+        },
+        supplierPerformance,
+        productsBySupplier
+      }
+    });
+  } catch (error) {
+    console.error("Get Supplier Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate supplier report"
+    });
+  }
+};
+
+//<-----------------CUSTOMER REPORT----------------->
+const getCustomerReport = async (req, res) => {
+  try {
+    const { startDate, endDate, customerId } = req.query;
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "SALE",
+      ...dateFilter
+    };
+    
+    // Filter by customer if provided
+    if (customerId) {
+      if (!mongoose.Types.ObjectId.isValid(customerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid customer ID"
+        });
+      }
+      matchStage.customer = new mongoose.Types.ObjectId(customerId);
+    }
+    
+    // Customer performance
+    const customerPerformance = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: "$customer",
+          totalPurchases: { $sum: 1 },
+          totalQuantityPurchased: { $sum: "$quantity" },
+          totalSpent: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          lastPurchaseDate: { $max: "$createdAt" },
+          firstPurchaseDate: { $min: "$createdAt" }
+        }
+      },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "_id",
+          foreignField: "_id",
+          as: "customer"
+        }
+      },
+      { $unwind: "$customer" },
+      {
+        $project: {
+          _id: 0,
+          customerId: "$customer._id",
+          customerName: "$customer.name",
+          customerEmail: "$customer.email",
+          customerPhone: "$customer.phone",
+          totalPurchases: 1,
+          totalQuantityPurchased: 1,
+          totalSpent: { $round: ["$totalSpent", 2] },
+          averagePurchaseValue: {
+            $round: [
+              { $divide: ["$totalSpent", "$totalPurchases"] },
+              2
+            ]
+          },
+          lastPurchaseDate: 1,
+          firstPurchaseDate: 1
+        }
+      },
+      { $sort: { totalSpent: -1 } }
+    ]);
+    
+    // Products by customer
+    const productsByCustomer = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            customer: "$customer",
+            product: "$product"
+          },
+          quantityPurchased: { $sum: "$quantity" },
+          totalSpent: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          purchaseCount: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "_id.customer",
+          foreignField: "_id",
+          as: "customer"
+        }
+      },
+      { $unwind: "$customer" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id.product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $project: {
+          _id: 0,
+          customerId: "$customer._id",
+          customerName: "$customer.name",
+          productId: "$product._id",
+          productName: "$product.name",
+          category: "$product.category",
+          quantityPurchased: 1,
+          totalSpent: { $round: ["$totalSpent", 2] },
+          purchaseCount: 1
+        }
+      },
+      { $sort: { customerName: 1, totalSpent: -1 } }
+    ]);
+    
+    // Summary
+    const totalRevenue = customerPerformance.reduce(
+      (sum, customer) => sum + customer.totalSpent,
+      0
+    );
+    
+    const totalQuantitySold = customerPerformance.reduce(
+      (sum, customer) => sum + customer.totalQuantityPurchased,
+      0
+    );
+    
+    const totalTransactions = customerPerformance.reduce(
+      (sum, customer) => sum + customer.totalPurchases,
+      0
+    );
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        },
+        summary: {
+          totalCustomers: customerPerformance.length,
+          totalTransactions,
+          totalQuantitySold,
+          totalRevenue: Number(totalRevenue.toFixed(2))
+        },
+        customerPerformance,
+        productsByCustomer
+      }
+    });
+  } catch (error) {
+    console.error("Get Customer Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate customer report"
+    });
+  }
+};
+
+module.exports = {
+  getSalesReport,
+  getPurchaseReport,
+  getInventoryReport,
+  getProfitLossReport,
+  getSupplierReport,
+  getCustomerReport
+};
+
+
+//<-----------------EXPORT SALES REPORT----------------->
+const exportSalesReport = async (req, res) => {
+  try {
+    const { startDate, endDate, format = "csv" } = req.query;
+    
+    if (!["csv", "xlsx", "pdf"].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid format. Supported formats: csv, xlsx, pdf"
+      });
+    }
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "SALE",
+      ...dateFilter
+    };
+    
+    // Get sales data
+    const salesData = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer"
+        }
+      },
+      { $unwind: "$customer" },
+      {
+        $project: {
+          _id: 0,
+          date: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          productName: "$product.name",
+          category: "$product.category",
+          customerName: "$customer.name",
+          quantity: 1,
+          unitPrice: 1,
+          totalAmount: { $multiply: ["$quantity", "$unitPrice"] }
+        }
+      },
+      { $sort: { date: -1 } }
+    ]);
+    
+    const periodStr = startDate && endDate 
+      ? `${startDate} to ${endDate}`
+      : startDate 
+        ? `From ${startDate}`
+        : endDate 
+          ? `Until ${endDate}`
+          : "All Time";
+    
+    if (format === "csv") {
+      const csvData = exportToCSV(salesData, [
+        "date",
+        "productName",
+        "category",
+        "customerName",
+        "quantity",
+        "unitPrice",
+        "totalAmount"
+      ]);
+      
+      setDownloadHeaders(res, "csv", `sales-report-${Date.now()}`);
+      return res.send(csvData);
+    }
+    
+    if (format === "xlsx") {
+      const xlsxBuffer = await exportToXLSX(
+        salesData,
+        "Sales Report",
+        [
+          { header: "Date", key: "date", width: 12 },
+          { header: "Product", key: "productName", width: 25 },
+          { header: "Category", key: "category", width: 15 },
+          { header: "Customer", key: "customerName", width: 20 },
+          { header: "Quantity", key: "quantity", width: 10 },
+          { header: "Unit Price", key: "unitPrice", width: 12 },
+          { header: "Total Amount", key: "totalAmount", width: 15 }
+        ]
+      );
+      
+      setDownloadHeaders(res, "xlsx", `sales-report-${Date.now()}`);
+      return res.send(xlsxBuffer);
+    }
+    
+    if (format === "pdf") {
+      const pdfBuffer = await exportToPDF(
+        "Sales Report",
+        salesData,
+        [
+          { label: "Date", key: "date" },
+          { label: "Product", key: "productName" },
+          { label: "Category", key: "category" },
+          { label: "Customer", key: "customerName" },
+          { label: "Qty", key: "quantity" },
+          { label: "Unit Price", key: "unitPrice" },
+          { label: "Total", key: "totalAmount" }
+        ],
+        {
+          period: periodStr,
+          generatedAt: new Date().toISOString().split("T")[0]
+        }
+      );
+      
+      setDownloadHeaders(res, "pdf", `sales-report-${Date.now()}`);
+      return res.send(pdfBuffer);
+    }
+  } catch (error) {
+    console.error("Export Sales Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to export sales report"
+    });
+  }
+};
+
+//<-----------------EXPORT PURCHASE REPORT----------------->
+const exportPurchaseReport = async (req, res) => {
+  try {
+    const { startDate, endDate, format = "csv" } = req.query;
+    
+    if (!["csv", "xlsx", "pdf"].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid format. Supported formats: csv, xlsx, pdf"
+      });
+    }
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "PURCHASE",
+      ...dateFilter
+    };
+    
+    // Get purchase data
+    const purchaseData = await StockMovement.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $lookup: {
+          from: "suppliers",
+          localField: "supplier",
+          foreignField: "_id",
+          as: "supplier"
+        }
+      },
+      { $unwind: "$supplier" },
+      {
+        $project: {
+          _id: 0,
+          date: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          productName: "$product.name",
+          category: "$product.category",
+          supplierName: "$supplier.name",
+          quantity: 1,
+          unitPrice: 1,
+          totalCost: { $multiply: ["$quantity", "$unitPrice"] }
+        }
+      },
+      { $sort: { date: -1 } }
+    ]);
+    
+    const periodStr = startDate && endDate 
+      ? `${startDate} to ${endDate}`
+      : startDate 
+        ? `From ${startDate}`
+        : endDate 
+          ? `Until ${endDate}`
+          : "All Time";
+    
+    if (format === "csv") {
+      const csvData = exportToCSV(purchaseData, [
+        "date",
+        "productName",
+        "category",
+        "supplierName",
+        "quantity",
+        "unitPrice",
+        "totalCost"
+      ]);
+      
+      setDownloadHeaders(res, "csv", `purchase-report-${Date.now()}`);
+      return res.send(csvData);
+    }
+    
+    if (format === "xlsx") {
+      const xlsxBuffer = await exportToXLSX(
+        purchaseData,
+        "Purchase Report",
+        [
+          { header: "Date", key: "date", width: 12 },
+          { header: "Product", key: "productName", width: 25 },
+          { header: "Category", key: "category", width: 15 },
+          { header: "Supplier", key: "supplierName", width: 20 },
+          { header: "Quantity", key: "quantity", width: 10 },
+          { header: "Unit Price", key: "unitPrice", width: 12 },
+          { header: "Total Cost", key: "totalCost", width: 15 }
+        ]
+      );
+      
+      setDownloadHeaders(res, "xlsx", `purchase-report-${Date.now()}`);
+      return res.send(xlsxBuffer);
+    }
+    
+    if (format === "pdf") {
+      const pdfBuffer = await exportToPDF(
+        "Purchase Report",
+        purchaseData,
+        [
+          { label: "Date", key: "date" },
+          { label: "Product", key: "productName" },
+          { label: "Category", key: "category" },
+          { label: "Supplier", key: "supplierName" },
+          { label: "Qty", key: "quantity" },
+          { label: "Unit Price", key: "unitPrice" },
+          { label: "Total Cost", key: "totalCost" }
+        ],
+        {
+          period: periodStr,
+          generatedAt: new Date().toISOString().split("T")[0]
+        }
+      );
+      
+      setDownloadHeaders(res, "pdf", `purchase-report-${Date.now()}`);
+      return res.send(pdfBuffer);
+    }
+  } catch (error) {
+    console.error("Export Purchase Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to export purchase report"
+    });
+  }
+};
+
+//<-----------------EXPORT INVENTORY REPORT----------------->
+const exportInventoryReport = async (req, res) => {
+  try {
+    const { format = "csv" } = req.query;
+    
+    if (!["csv", "xlsx", "pdf"].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid format. Supported formats: csv, xlsx, pdf"
+      });
+    }
+    
+    // Get all products with calculated inventory value
+    const inventoryData = await Product.aggregate([
+      {
+        $project: {
+          _id: 0,
+          name: 1,
+          sku: 1,
+          category: 1,
+          quantity: 1,
+          lowStockThreshold: 1,
+          purchasePrice: 1,
+          sellingPrice: 1,
+          inventoryValue: {
+            $multiply: ["$quantity", "$purchasePrice"]
+          },
           status: {
             $cond: [
               { $eq: ["$quantity", 0] },
-              "OUT_OF_STOCK",
+              "Out of Stock",
               {
                 $cond: [
                   { $lte: ["$quantity", "$lowStockThreshold"] },
-                  "LOW_STOCK",
-                  "HEALTHY"
+                  "Low Stock",
+                  "Healthy"
                 ]
               }
             ]
           }
         }
       },
-      { $sort: { quantity: 1 } }
+      { $sort: { category: 1, name: 1 } }
     ]);
-
-    /* By category */
-    const byCategory = await Product.aggregate([
-      {
-        $group: {
-          _id:            "$category",
-          productCount:   { $sum: 1 },
-          totalQuantity:  { $sum: "$quantity" },
-          inventoryValue: { $sum: { $multiply: ["$quantity", "$purchasePrice"] } }
+    
+    if (format === "csv") {
+      const csvData = exportToCSV(inventoryData, [
+        "name",
+        "sku",
+        "category",
+        "quantity",
+        "lowStockThreshold",
+        "purchasePrice",
+        "sellingPrice",
+        "inventoryValue",
+        "status"
+      ]);
+      
+      setDownloadHeaders(res, "csv", `inventory-report-${Date.now()}`);
+      return res.send(csvData);
+    }
+    
+    if (format === "xlsx") {
+      const xlsxBuffer = await exportToXLSX(
+        inventoryData,
+        "Inventory Report",
+        [
+          { header: "Product Name", key: "name", width: 25 },
+          { header: "SKU", key: "sku", width: 15 },
+          { header: "Category", key: "category", width: 15 },
+          { header: "Quantity", key: "quantity", width: 10 },
+          { header: "Low Stock Threshold", key: "lowStockThreshold", width: 18 },
+          { header: "Purchase Price", key: "purchasePrice", width: 15 },
+          { header: "Selling Price", key: "sellingPrice", width: 15 },
+          { header: "Inventory Value", key: "inventoryValue", width: 15 },
+          { header: "Status", key: "status", width: 12 }
+        ]
+      );
+      
+      setDownloadHeaders(res, "xlsx", `inventory-report-${Date.now()}`);
+      return res.send(xlsxBuffer);
+    }
+    
+    if (format === "pdf") {
+      const pdfBuffer = await exportToPDF(
+        "Inventory Report",
+        inventoryData,
+        [
+          { label: "Product", key: "name" },
+          { label: "SKU", key: "sku" },
+          { label: "Category", key: "category" },
+          { label: "Qty", key: "quantity" },
+          { label: "Threshold", key: "lowStockThreshold" },
+          { label: "Purchase Price", key: "purchasePrice" },
+          { label: "Inventory Value", key: "inventoryValue" },
+          { label: "Status", key: "status" }
+        ],
+        {
+          generatedAt: new Date().toISOString().split("T")[0]
         }
-      },
-      { $sort: { inventoryValue: -1 } },
-      {
-        $project: {
-          _id: 0,
-          category:       "$_id",
-          productCount:   1,
-          totalQuantity:  1,
-          inventoryValue: { $round: ["$inventoryValue", 2] }
-        }
-      }
-    ]);
-
-    const meta = {
-      generatedAt: new Date().toISOString(),
-      period:      "Current snapshot",
-      startDate:   null,
-      endDate:     null
-    };
-
-    const jsonBody = { success: true, meta, summary, products, byCategory };
-
-    const flatRows = products.map((p) => ({
-      name:              p.name,
-      sku:               p.sku,
-      category:          p.category,
-      quantity:          p.quantity,
-      lowStockThreshold: p.lowStockThreshold,
-      purchasePrice:     p.purchasePrice,
-      inventoryValue:    p.inventoryValue,
-      status:            p.status
-    }));
-
-    const columns = [
-      { label: "Name",              key: "name",              width: 30 },
-      { label: "SKU",               key: "sku",               width: 15 },
-      { label: "Category",          key: "category",          width: 20 },
-      { label: "Quantity",          key: "quantity",          width: 12 },
-      { label: "Low Stock Thresh.", key: "lowStockThreshold", width: 18 },
-      { label: "Purchase Price",    key: "purchasePrice",     width: 16 },
-      { label: "Inventory Value",   key: "inventoryValue",    width: 16 },
-      { label: "Status",            key: "status",            width: 15 }
-    ];
-
-    return sendReport(res, format, "Inventory Report", "inventory_report", meta, jsonBody, flatRows, columns);
-
+      );
+      
+      setDownloadHeaders(res, "pdf", `inventory-report-${Date.now()}`);
+      return res.send(pdfBuffer);
+    }
   } catch (error) {
-    console.error("Inventory Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate inventory report" });
+    console.error("Export Inventory Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to export inventory report"
+    });
   }
 };
 
-
-/* ================================================================== */
-/* 4. PROFIT & LOSS REPORT                                              */
-/* GET /api/reports/profit-loss?startDate=&endDate=&format=            */
-/* ================================================================== */
-const getProfitLossReport = async (req, res) => {
+//<-----------------EXPORT PROFIT & LOSS REPORT----------------->
+const exportProfitLossReport = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format." });
-    }
-    if (!isValidDateOrEmpty(startDate) || !isValidDateOrEmpty(endDate)) {
-      return res.status(400).json({ success: false, message: "Invalid date format." });
-    }
-
-    const dateRange  = buildDateMatch(startDate, endDate);
-    const matchStage = dateRange ? { createdAt: dateRange } : {};
-
-    /* Current period totals */
-    const currentPeriodAgg = await StockMovements.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id:    "$type",
-          amount: { $sum: { $multiply: ["$quantity", "$unitPrice"] } }
-        }
-      }
-    ]);
-
-    let revenue = 0;
-    let purchaseCost = 0;
-    currentPeriodAgg.forEach((item) => {
-      if (item._id === "SALE")     revenue      = item.amount;
-      if (item._id === "PURCHASE") purchaseCost = item.amount;
-    });
-
-    const grossProfit   = revenue - purchaseCost;
-    const profitMargin  = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-
-    /* Previous period comparison (only when both dates supplied) */
-    let previousPeriod = null;
-    if (startDate && endDate) {
-      const start       = new Date(startDate);
-      const end         = new Date(endDate);
-      const periodMs    = end.getTime() - start.getTime();
-      const prevEnd     = new Date(start.getTime() - 1);
-      const prevStart   = new Date(prevEnd.getTime() - periodMs);
-
-      const prevAgg = await StockMovements.aggregate([
-        { $match: { createdAt: { $gte: prevStart, $lte: prevEnd } } },
-        {
-          $group: {
-            _id:    "$type",
-            amount: { $sum: { $multiply: ["$quantity", "$unitPrice"] } }
-          }
-        }
-      ]);
-
-      let prevRevenue = 0;
-      let prevCost    = 0;
-      prevAgg.forEach((item) => {
-        if (item._id === "SALE")     prevRevenue = item.amount;
-        if (item._id === "PURCHASE") prevCost    = item.amount;
+    const { startDate, endDate, format = "csv" } = req.query;
+    
+    if (!["csv", "xlsx", "pdf"].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid format. Supported formats: csv, xlsx, pdf"
       });
-
-      const prevProfit = prevRevenue - prevCost;
-      const revenueGrowth = prevRevenue === 0
-        ? (prevRevenue > 0 ? 100 : 0)
-        : ((revenue - prevRevenue) / prevRevenue) * 100;
-
-      previousPeriod = {
-        revenue:      round2(prevRevenue),
-        purchaseCost: round2(prevCost),
-        grossProfit:  round2(prevProfit),
-        revenueGrowth: round2(revenueGrowth)
-      };
     }
-
-    /* By product */
-    const byProduct = await StockMovements.aggregate([
+    
+    let dateFilter;
+    try {
+      dateFilter = buildDateFilter(startDate, endDate);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    const matchStage = {
+      type: "SALE",
+      ...dateFilter
+    };
+    
+    // Get profit/loss by product
+    const plData = await StockMovement.aggregate([
       { $match: matchStage },
-      {
-        $group: {
-          _id:    { product: "$product", type: "$type" },
-          amount: { $sum: { $multiply: ["$quantity", "$unitPrice"] } }
-        }
-      },
-      {
-        $group: {
-          _id:          "$_id.product",
-          revenue:      {
-            $sum: { $cond: [{ $eq: ["$_id.type", "SALE"] }, "$amount", 0] }
-          },
-          purchaseCost: {
-            $sum: { $cond: [{ $eq: ["$_id.type", "PURCHASE"] }, "$amount", 0] }
-          }
-        }
-      },
       {
         $lookup: {
-          from: "products", localField: "_id",
-          foreignField: "_id", as: "product"
+          from: "products",
+          localField: "product",
+          foreignField: "_id",
+          as: "product"
         }
       },
       { $unwind: "$product" },
       {
+        $group: {
+          _id: {
+            productId: "$product._id",
+            productName: "$product.name",
+            category: "$product.category"
+          },
+          unitsSold: { $sum: "$quantity" },
+          revenue: {
+            $sum: { $multiply: ["$quantity", "$unitPrice"] }
+          },
+          costOfGoodsSold: {
+            $sum: { $multiply: ["$quantity", "$product.purchasePrice"] }
+          }
+        }
+      },
+      {
         $project: {
           _id: 0,
-          name:         "$product.name",
-          category:     "$product.category",
-          revenue:      { $round: ["$revenue", 2] },
-          purchaseCost: { $round: ["$purchaseCost", 2] },
+          productName: "$_id.productName",
+          category: "$_id.category",
+          unitsSold: 1,
+          revenue: { $round: ["$revenue", 2] },
+          costOfGoodsSold: { $round: ["$costOfGoodsSold", 2] },
           grossProfit: {
-            $round: [{ $subtract: ["$revenue", "$purchaseCost"] }, 2]
+            $round: [{ $subtract: ["$revenue", "$costOfGoodsSold"] }, 2]
           },
-          profitMargin: {
+          grossMargin: {
             $round: [
               {
                 $cond: [
                   { $gt: ["$revenue", 0] },
-                  { $multiply: [{ $divide: [{ $subtract: ["$revenue", "$purchaseCost"] }, "$revenue"] }, 100] },
+                  {
+                    $multiply: [
+                      {
+                        $divide: [
+                          { $subtract: ["$revenue", "$costOfGoodsSold"] },
+                          "$revenue"
+                        ]
+                      },
+                      100
+                    ]
+                  },
                   0
                 ]
               },
@@ -713,269 +1619,79 @@ const getProfitLossReport = async (req, res) => {
       },
       { $sort: { grossProfit: -1 } }
     ]);
-
-    const meta = {
-      generatedAt: new Date().toISOString(),
-      period:      describePeriod(startDate, endDate),
-      startDate:   startDate || null,
-      endDate:     endDate   || null
-    };
-
-    const jsonBody = {
-      success: true,
-      meta,
-      summary: {
-        revenue:       round2(revenue),
-        purchaseCost:  round2(purchaseCost),
-        grossProfit:   round2(grossProfit),
-        profitMargin:  round2(profitMargin),
-        previousPeriod
-      },
-      byProduct
-    };
-
-    const flatRows = byProduct.map((p) => ({
-      name:         p.name,
-      category:     p.category,
-      revenue:      p.revenue,
-      purchaseCost: p.purchaseCost,
-      grossProfit:  p.grossProfit,
-      profitMargin: p.profitMargin
-    }));
-
-    const columns = [
-      { label: "Product Name",   key: "name",         width: 30 },
-      { label: "Category",       key: "category",     width: 20 },
-      { label: "Revenue ($)",    key: "revenue",      width: 15 },
-      { label: "Cost ($)",       key: "purchaseCost", width: 15 },
-      { label: "Gross Profit",   key: "grossProfit",  width: 15 },
-      { label: "Margin (%)",     key: "profitMargin", width: 12 }
-    ];
-
-    return sendReport(res, format, "Profit & Loss Report", "profit_loss_report", meta, jsonBody, flatRows, columns);
-
+    
+    const periodStr = startDate && endDate 
+      ? `${startDate} to ${endDate}`
+      : startDate 
+        ? `From ${startDate}`
+        : endDate 
+          ? `Until ${endDate}`
+          : "All Time";
+    
+    if (format === "csv") {
+      const csvData = exportToCSV(plData, [
+        "productName",
+        "category",
+        "unitsSold",
+        "revenue",
+        "costOfGoodsSold",
+        "grossProfit",
+        "grossMargin"
+      ]);
+      
+      setDownloadHeaders(res, "csv", `profit-loss-report-${Date.now()}`);
+      return res.send(csvData);
+    }
+    
+    if (format === "xlsx") {
+      const xlsxBuffer = await exportToXLSX(
+        plData,
+        "Profit & Loss Report",
+        [
+          { header: "Product", key: "productName", width: 25 },
+          { header: "Category", key: "category", width: 15 },
+          { header: "Units Sold", key: "unitsSold", width: 12 },
+          { header: "Revenue", key: "revenue", width: 15 },
+          { header: "Cost of Goods Sold", key: "costOfGoodsSold", width: 18 },
+          { header: "Gross Profit", key: "grossProfit", width: 15 },
+          { header: "Gross Margin %", key: "grossMargin", width: 15 }
+        ]
+      );
+      
+      setDownloadHeaders(res, "xlsx", `profit-loss-report-${Date.now()}`);
+      return res.send(xlsxBuffer);
+    }
+    
+    if (format === "pdf") {
+      const pdfBuffer = await exportToPDF(
+        "Profit & Loss Report",
+        plData,
+        [
+          { label: "Product", key: "productName" },
+          { label: "Category", key: "category" },
+          { label: "Units Sold", key: "unitsSold" },
+          { label: "Revenue", key: "revenue" },
+          { label: "COGS", key: "costOfGoodsSold" },
+          { label: "Gross Profit", key: "grossProfit" },
+          { label: "Margin %", key: "grossMargin" }
+        ],
+        {
+          period: periodStr,
+          generatedAt: new Date().toISOString().split("T")[0]
+        }
+      );
+      
+      setDownloadHeaders(res, "pdf", `profit-loss-report-${Date.now()}`);
+      return res.send(pdfBuffer);
+    }
   } catch (error) {
-    console.error("P&L Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate profit & loss report" });
+    console.error("Export Profit & Loss Report Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to export profit & loss report"
+    });
   }
 };
-
-
-/* ================================================================== */
-/* 5. SUPPLIER REPORT                                                   */
-/* GET /api/reports/suppliers?startDate=&endDate=&format=              */
-/* ================================================================== */
-const getSupplierReport = async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format." });
-    }
-    if (!isValidDateOrEmpty(startDate) || !isValidDateOrEmpty(endDate)) {
-      return res.status(400).json({ success: false, message: "Invalid date format." });
-    }
-
-    const dateRange  = buildDateMatch(startDate, endDate);
-    const matchStage = { type: "PURCHASE", ...(dateRange && { createdAt: dateRange }) };
-
-    /* Per-supplier breakdown */
-    const suppliers = await StockMovements.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id:               "$supplier",
-          totalUnitsPurchased: { $sum: "$quantity" },
-          totalPurchaseValue:  { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          purchaseCount:       { $sum: 1 },
-          productIds:          { $addToSet: "$product" }
-        }
-      },
-      {
-        $lookup: {
-          from: "suppliers", localField: "_id",
-          foreignField: "_id", as: "supplier"
-        }
-      },
-      { $unwind: { path: "$supplier", preserveNullAndEmpty: true } },
-      { $sort: { totalPurchaseValue: -1 } },
-      {
-        $project: {
-          _id: 0,
-          supplierId:          "$_id",
-          supplierName:        { $ifNull: ["$supplier.name",  "Unknown"] },
-          supplierEmail:       { $ifNull: ["$supplier.email", ""] },
-          supplierPhone:       { $ifNull: ["$supplier.phone", ""] },
-          totalUnitsPurchased: 1,
-          totalPurchaseValue:  { $round: ["$totalPurchaseValue", 2] },
-          purchaseCount:       1,
-          uniqueProducts:      { $size: "$productIds" }
-        }
-      }
-    ]);
-
-    /* Overall totals */
-    const totalSuppliers = await Supplier.countDocuments();
-    const totalValue     = suppliers.reduce((s, r) => s + r.totalPurchaseValue, 0);
-
-    const meta = {
-      generatedAt:     new Date().toISOString(),
-      period:          describePeriod(startDate, endDate),
-      totalSuppliers,
-      startDate:       startDate || null,
-      endDate:         endDate   || null
-    };
-
-    const jsonBody = {
-      success: true,
-      meta,
-      summary: {
-        totalSuppliers,
-        totalPurchaseValue: round2(totalValue),
-        activeSuppliers:    suppliers.length
-      },
-      suppliers
-    };
-
-    const flatRows = suppliers.map((s) => ({
-      supplierName:        s.supplierName,
-      supplierEmail:       s.supplierEmail,
-      supplierPhone:       s.supplierPhone,
-      totalUnitsPurchased: s.totalUnitsPurchased,
-      totalPurchaseValue:  s.totalPurchaseValue,
-      purchaseCount:       s.purchaseCount,
-      uniqueProducts:      s.uniqueProducts
-    }));
-
-    const columns = [
-      { label: "Supplier Name",        key: "supplierName",        width: 25 },
-      { label: "Email",                key: "supplierEmail",       width: 25 },
-      { label: "Phone",                key: "supplierPhone",       width: 15 },
-      { label: "Units Purchased",      key: "totalUnitsPurchased", width: 18 },
-      { label: "Purchase Value ($)",   key: "totalPurchaseValue",  width: 18 },
-      { label: "# Transactions",       key: "purchaseCount",       width: 16 },
-      { label: "Unique Products",      key: "uniqueProducts",      width: 16 }
-    ];
-
-    return sendReport(res, format, "Supplier Report", "supplier_report", meta, jsonBody, flatRows, columns);
-
-  } catch (error) {
-    console.error("Supplier Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate supplier report" });
-  }
-};
-
-
-/* ================================================================== */
-/* 6. CUSTOMER REPORT                                                   */
-/* GET /api/reports/customers?startDate=&endDate=&format=              */
-/* ================================================================== */
-const getCustomerReport = async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const format = (req.query.format || "json").toLowerCase();
-
-    if (!ALLOWED_FORMATS.has(format)) {
-      return res.status(400).json({ success: false, message: "Invalid format." });
-    }
-    if (!isValidDateOrEmpty(startDate) || !isValidDateOrEmpty(endDate)) {
-      return res.status(400).json({ success: false, message: "Invalid date format." });
-    }
-
-    const dateRange  = buildDateMatch(startDate, endDate);
-    const matchStage = { type: "SALE", ...(dateRange && { createdAt: dateRange }) };
-
-    /* Per-customer breakdown */
-    const customers = await StockMovements.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id:            "$customer",
-          totalSpent:     { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
-          totalUnits:     { $sum: "$quantity" },
-          purchaseCount:  { $sum: 1 }
-        }
-      },
-      {
-        $lookup: {
-          from: "customers", localField: "_id",
-          foreignField: "_id", as: "customer"
-        }
-      },
-      { $unwind: { path: "$customer", preserveNullAndEmpty: true } },
-      { $sort: { totalSpent: -1 } },
-      {
-        $project: {
-          _id: 0,
-          customerId:    "$_id",
-          customerName:  { $ifNull: ["$customer.name",  "Unknown"] },
-          customerEmail: { $ifNull: ["$customer.email", ""] },
-          customerPhone: { $ifNull: ["$customer.phone", ""] },
-          totalSpent:    { $round: ["$totalSpent", 2] },
-          totalUnits:    1,
-          purchaseCount: 1,
-          averageOrderValue: {
-            $round: [
-              { $cond: [{ $gt: ["$purchaseCount", 0] }, { $divide: ["$totalSpent", "$purchaseCount"] }, 0] },
-              2
-            ]
-          }
-        }
-      }
-    ]);
-
-    /* Overall totals */
-    const totalCustomers  = await Customer.countDocuments();
-    const totalRevenue    = customers.reduce((s, c) => s + c.totalSpent, 0);
-
-    const meta = {
-      generatedAt:    new Date().toISOString(),
-      period:         describePeriod(startDate, endDate),
-      totalCustomers,
-      startDate:      startDate || null,
-      endDate:        endDate   || null
-    };
-
-    const jsonBody = {
-      success: true,
-      meta,
-      summary: {
-        totalCustomers,
-        activeCustomers:   customers.length,
-        totalRevenue:      round2(totalRevenue)
-      },
-      customers
-    };
-
-    const flatRows = customers.map((c) => ({
-      customerName:     c.customerName,
-      customerEmail:    c.customerEmail,
-      customerPhone:    c.customerPhone,
-      totalSpent:       c.totalSpent,
-      totalUnits:       c.totalUnits,
-      purchaseCount:    c.purchaseCount,
-      averageOrderValue: c.averageOrderValue
-    }));
-
-    const columns = [
-      { label: "Customer Name",    key: "customerName",     width: 25 },
-      { label: "Email",            key: "customerEmail",    width: 25 },
-      { label: "Phone",            key: "customerPhone",    width: 15 },
-      { label: "Total Spent ($)",  key: "totalSpent",       width: 16 },
-      { label: "Units Bought",     key: "totalUnits",       width: 14 },
-      { label: "# Purchases",      key: "purchaseCount",    width: 14 },
-      { label: "Avg Order ($)",    key: "averageOrderValue",width: 14 }
-    ];
-
-    return sendReport(res, format, "Customer Report", "customer_report", meta, jsonBody, flatRows, columns);
-
-  } catch (error) {
-    console.error("Customer Report Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to generate customer report" });
-  }
-};
-
 
 module.exports = {
   getSalesReport,
@@ -983,5 +1699,9 @@ module.exports = {
   getInventoryReport,
   getProfitLossReport,
   getSupplierReport,
-  getCustomerReport
+  getCustomerReport,
+  exportSalesReport,
+  exportPurchaseReport,
+  exportInventoryReport,
+  exportProfitLossReport
 };

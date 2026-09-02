@@ -1,36 +1,59 @@
 {
   "name": "smart-inventory-management-system",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A comprehensive backend system for managing inventory, sales, purchases, and business analytics with AI-powered stock recommendations",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed": "node seedProducts.js",
-    "test": "jest --runInBand --forceExit"
+    "test": "jest --runInBand --forceExit",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage --runInBand --forceExit"
   },
   "jest": {
     "testEnvironment": "node",
-    "testTimeout": 30000
+    "testTimeout": 30000,
+    "setupFiles": ["<rootDir>/tests/setup.js"]
   },
-  "keywords": [],
+  "keywords": [
+    "inventory-management",
+    "sales-management",
+    "analytics",
+    "reporting",
+    "ai-recommendations",
+    "stock-management",
+    "business-intelligence"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@google/genai": "^2.20.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "envalid": "^8.2.0",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "json2csv": "^6.0.0-alpha.2",
     "mongoose": "^9.7.4",
+    "morgan": "^1.12.0",
     "nodemon": "^3.1.14",
-    "pdfkit": "^0.20.2"
+    "pdfkit": "^0.20.2",
+    "winston": "^3.19.0",
+    "xss-clean": "^0.1.4"
   },
   "devDependencies": {
     "jest": "^30.4.2",
     "mongodb-memory-server": "^11.2.0",
     "supertest": "^7.2.2"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
   }
 }
