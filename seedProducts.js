@@ -488,7 +488,7 @@ async function seed() {
       const result = await Product.findOneAndUpdate(
         { sku: item.sku },
         item,
-        { upsert: true, new: true, runValidators: true, rawResult: true }
+        { upsert: true, returnDocument: 'after', runValidators: true, rawResult: true }
       );
 
       if (result.lastErrorObject && result.lastErrorObject.updatedExisting) {

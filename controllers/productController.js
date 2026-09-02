@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const StockMovement = require("../models/StockMovements");
+const Supplier = require("../models/Supplier");
+const Customer = require("../models/Customer");
 
 //<------------CREATE PRODUCT----------->
 const createProduct = async (req, res) => {
@@ -190,7 +192,7 @@ const updateProduct = async (req, res) => {
     }
     // Updating product
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
     });
 
@@ -249,39 +251,57 @@ const deleteProduct = async (req, res) => {
 //<-----------------PURCHASE PRODUCT--------------->
 const purchaseProduct = async (req, res) => {
   try {
-    const { quantity,unitPrice } = req.body || {};
+    const { quantity, unitPrice, supplierId } = req.body || {};
     const { id } = req.params;
+
+    // Validate product ID
     const isValidId = mongoose.Types.ObjectId.isValid(id);
+
     if (!isValidId) {
       return res.status(400).json({
         success: false,
         message: "Invalid id",
       });
     }
+
+    // Validate supplier ID
+    if (!supplierId || !mongoose.Types.ObjectId.isValid(supplierId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid supplier ID is required",
+      });
+    }
+
+    // Validate unit price
     if (typeof unitPrice !== "number" || isNaN(unitPrice)) {
       return res.status(400).json({
         success: false,
         message: "Unit price is required and must be a number",
       });
     }
+
     if (unitPrice < 0) {
       return res.status(400).json({
         success: false,
         message: "Unit price cannot be negative",
-  });
-}
+      });
+    }
+
+    // Validate quantity
     if (typeof quantity !== "number" || isNaN(quantity)) {
       return res.status(400).json({
         success: false,
         message: "Quantity is required and must be a number",
       });
     }
+
     if (quantity <= 0) {
       return res.status(400).json({
         success: false,
         message: "Quantity must be greater than 0",
       });
     }
+
     if (!Number.isInteger(quantity)) {
       return res.status(400).json({
         success: false,
@@ -289,10 +309,21 @@ const purchaseProduct = async (req, res) => {
       });
     }
 
+    // Check if supplier exists
+    const supplier = await Supplier.findById(supplierId);
+
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    // Update product quantity
     const product = await Product.findByIdAndUpdate(
       id,
       { $inc: { quantity: quantity } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!product) {
@@ -305,11 +336,13 @@ const purchaseProduct = async (req, res) => {
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity - quantity;
 
+    // Create stock movement
     await StockMovement.create({
       product: product._id,
       type: "PURCHASE",
       quantity: quantity,
       unitPrice: unitPrice,
+      supplier: supplier._id,
       prevQuantity: prevQuantity,
       newQuantity: newQuantity,
     });
@@ -319,8 +352,10 @@ const purchaseProduct = async (req, res) => {
       message: "Stock added successfully",
       data: product,
     });
+
   } catch (err) {
     console.error(err);
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -330,40 +365,65 @@ const purchaseProduct = async (req, res) => {
 
 //<-----------------SELL PRODUCT--------------->
 const sellProduct = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
-    const { quantity,unitPrice } = req.body || {};
+    const { quantity, unitPrice, customerId } = req.body || {};
     const { id } = req.params;
-    const isValidId = mongoose.Types.ObjectId.isValid(id);
-    if (!isValidId) {
+
+    // Validate product ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid id",
       });
     }
+
+    // Validate customer ID
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customer ID",
+      });
+    }
+
+    // Validate unit price
     if (typeof unitPrice !== "number" || isNaN(unitPrice)) {
       return res.status(400).json({
         success: false,
         message: "Unit price is required and must be a number",
       });
     }
+
     if (unitPrice < 0) {
       return res.status(400).json({
         success: false,
         message: "Unit price cannot be negative",
       });
     }
+
+    // Validate quantity
     if (typeof quantity !== "number" || isNaN(quantity)) {
       return res.status(400).json({
         success: false,
         message: "Quantity is required and must be a number",
       });
     }
+
     if (quantity <= 0) {
       return res.status(400).json({
         success: false,
         message: "Quantity must be greater than 0",
       });
     }
+
     if (!Number.isInteger(quantity)) {
       return res.status(400).json({
         success: false,
@@ -371,15 +431,39 @@ const sellProduct = async (req, res) => {
       });
     }
 
+    // Check customer exists
+    const customer = await Customer.findById(customerId).session(session);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // Start transaction
+    session.startTransaction();
+
     // Filter checks if stock is sufficient before updating
     const product = await Product.findOneAndUpdate(
-      { _id: id, quantity: { $gte: quantity } },
-      { $inc: { quantity: -quantity } },
-      { new: true, runValidators: true }
+      {
+        _id: id,
+        quantity: { $gte: quantity },
+      },
+      {
+        $inc: { quantity: -quantity },
+      },
+      {
+        returnDocument: "after",
+        runValidators: true,
+        session,
+      }
     );
 
-    // product == null when the filter rejects the sale
+    // product == null when filter rejects the sale
     if (!product) {
+      await session.abortTransaction();
+
       return res.status(400).json({
         success: false,
         message: "Insufficient stock or product not found",
@@ -389,26 +473,46 @@ const sellProduct = async (req, res) => {
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity + quantity;
 
-    await StockMovement.create({
-      product: product._id,
-      type: "SALE",
-      quantity: quantity,
-      unitPrice: unitPrice,
-      prevQuantity: prevQuantity,
-      newQuantity: newQuantity,
-    });
+    // Create stock movement inside same transaction
+    await StockMovement.create(
+      [
+        {
+          product: product._id,
+          type: "SALE",
+          quantity: quantity,
+          unitPrice: unitPrice,
+          customer: customer._id,
+          prevQuantity: prevQuantity,
+          newQuantity: newQuantity,
+        },
+      ],
+      { session }
+    );
+
+    // Commit transaction
+    await session.commitTransaction();
 
     return res.status(200).json({
       success: true,
       message: "Product sold successfully",
       data: product,
     });
+
   } catch (error) {
+    // Roll back everything if anything fails
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     console.error(error);
+
     return res.status(500).json({
       success: false,
       message: error.message,
     });
+
+  } finally {
+    await session.endSession();
   }
 };
 

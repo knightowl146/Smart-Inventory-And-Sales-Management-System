@@ -24,6 +24,21 @@ const stockMovementsSchema = new mongoose.Schema(
             required: true,
             min: 0
         },
+        supplier: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Supplier",
+            required: function () {
+                return this.type === "PURCHASE";
+            }
+        },
+
+        customer: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Customer",
+            required: function () {
+                return this.type === "SALE";
+            }
+        },
 
         prevQuantity:{
             type: Number,

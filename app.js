@@ -6,6 +6,8 @@ const stockMovementRoutes = require("./routes/stockMovementRoutes");
 const productRoutes = require("./routes/productRoutes");
 const dashboardRoutes = require("./routes/dashboardRoute.js");
 const analyticsRoutes = require("./routes/analyticsRoutes.js");
+const supplierRoutes = require("./routes/supplierRoutes");
+const customerRoutes = require("./routes/customerRoutes");
 
 //middlewares
 app.use(cors());
@@ -24,6 +26,9 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/analytics", analyticsRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/customers", customerRoutes);
 
 app.get("/", (req, res) => {
   res.send("Welcome to Smart Inventory API");

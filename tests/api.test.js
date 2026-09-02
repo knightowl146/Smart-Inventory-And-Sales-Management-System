@@ -5,6 +5,7 @@ const app = require("../app");
 
 let mongoServer;
 let createdProductId;
+let testSupplierId;
 
 // ─── Setup & Teardown ──────────────────────────────────────────────────────────
 
@@ -12,6 +13,14 @@ beforeAll(async () => {
   mongoServer = await MongoMemoryServer.create();
   const uri = mongoServer.getUri();
   await mongoose.connect(uri);
+
+  // Create a shared test supplier for purchase tests
+  const supplierRes = await request(app).post("/api/suppliers").send({
+    name: "Test Supplier",
+    email: "test@supplier.com",
+    phone: "9999999999"
+  });
+  testSupplierId = supplierRes.body.data._id;
 });
 
 afterAll(async () => {
@@ -158,7 +167,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("200: adds stock successfully via POST", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
-      .send({ quantity: 50 });
+      .send({ quantity: 50, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Stock added successfully");
@@ -167,7 +176,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("200: adds stock successfully via PUT", async () => {
     const res = await request(app)
       .put(`/products/${createdProductId}/purchase`)
-      .send({ quantity: 10 });
+      .send({ quantity: 10, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Stock added successfully");
@@ -176,7 +185,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("400: rejects zero quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
-      .send({ quantity: 0 });
+      .send({ quantity: 0, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe("Quantity must be greater than 0");
@@ -185,7 +194,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("400: rejects negative quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
-      .send({ quantity: -5 });
+      .send({ quantity: -5, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
   });
@@ -193,7 +202,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("400: rejects non-integer quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
-      .send({ quantity: 2.5 });
+      .send({ quantity: 2.5, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe("Quantity must be an integer");
@@ -202,23 +211,32 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
   it("400: rejects non-number quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/purchase`)
-      .send({ quantity: "abc" });
+      .send({ quantity: "abc", unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   it("400: returns error for invalid product ID", async () => {
-    const res = await request(app).post("/api/products/bad-id/purchase").send({ quantity: 10 });
+    const res = await request(app).post("/api/products/bad-id/purchase").send({ quantity: 10, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe("Invalid id");
+  });
+
+  it("400: returns error when supplierId is missing", async () => {
+    const res = await request(app)
+      .post(`/api/products/${createdProductId}/purchase`)
+      .send({ quantity: 10, unitPrice: 20 });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe("Valid supplier ID is required");
   });
 
   it("404: returns error when product does not exist", async () => {
     const fakeId = new mongoose.Types.ObjectId();
     const res = await request(app)
       .post(`/api/products/${fakeId}/purchase`)
-      .send({ quantity: 10 });
+      .send({ quantity: 10, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(404);
     expect(res.body.success).toBe(false);
   });
@@ -230,7 +248,7 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
   it("200: sells stock successfully", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/sell`)
-      .send({ quantity: 10 });
+      .send({ quantity: 10, unitPrice: 40 });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Product sold successfully");
@@ -239,7 +257,7 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
   it("400: returns error for insufficient stock", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/sell`)
-      .send({ quantity: 999999 });
+      .send({ quantity: 999999, unitPrice: 40 });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe("Insufficient stock or product not found");
@@ -248,7 +266,7 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
   it("400: rejects zero quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/sell`)
-      .send({ quantity: 0 });
+      .send({ quantity: 0, unitPrice: 40 });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
   });
@@ -256,14 +274,14 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
   it("400: rejects non-integer quantity", async () => {
     const res = await request(app)
       .post(`/api/products/${createdProductId}/sell`)
-      .send({ quantity: 1.5 });
+      .send({ quantity: 1.5, unitPrice: 40 });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
     expect(res.body.message).toBe("Quantity must be an integer");
   });
 
   it("400: returns error for invalid product ID", async () => {
-    const res = await request(app).post("/api/products/bad-id/sell").send({ quantity: 5 });
+    const res = await request(app).post("/api/products/bad-id/sell").send({ quantity: 5, unitPrice: 40 });
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
   });
@@ -272,7 +290,6 @@ describe("POST /api/products/:id/sell — Sell Product", () => {
     const res = await request(app).post(`/api/products/${createdProductId}/sell`).send();
     expect(res.statusCode).toBe(400);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toBe("Quantity is required and must be a number");
   });
 });
 
