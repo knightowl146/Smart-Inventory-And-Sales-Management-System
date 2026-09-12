@@ -920,75 +920,67 @@ const getInventoryHealth = async (req, res) => {
 };
 //<----------PROFIT & LOSS ANALYTICS--------------->
 const getProfitLoss = async (req, res) => {
-    try {
-        const { startDate, endDate } = req.query;
+  try {
+      const { startDate, endDate } = req.query;
 
-        const matchStage = {};
+      const matchStage = { type: "SALE" };
 
-        if (startDate || endDate) {
-            matchStage.createdAt = {};
+      if (startDate || endDate) {
+          matchStage.createdAt = {};
 
-            if (startDate) {
-                matchStage.createdAt.$gte = new Date(startDate);
-            }
+          if (startDate) {
+              matchStage.createdAt.$gte = new Date(startDate);
+          }
 
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                matchStage.createdAt.$lte = end;
-            }
-        }
+          if (endDate) {
+              const end = new Date(endDate);
+              end.setHours(23, 59, 59, 999);
+              matchStage.createdAt.$lte = end;
+          }
+      }
 
-        const analytics = await StockMovements.aggregate([
-            {
-                $match: matchStage
-            },
-
-            {
-                $group: {
-                    _id: "$type",
-
-                    totalAmount: {
-                        $sum: {
-                            $multiply: [
-                                "$quantity",
-                                "$unitPrice"
-                            ]
-                        }
-                    }
+      const analytics = await StockMovements.aggregate([
+          { $match: matchStage },
+          {
+              $lookup: {
+                  from: "products",
+                  localField: "product",
+                  foreignField: "_id",
+                  as: "productData"
+              }
+          },
+          { $unwind: "$productData" },
+          {
+              $group: {
+                  _id: null,
+                  revenue: {
+                      $sum: { $multiply: ["$quantity", "$unitPrice"] }
+                  },
+                  costOfGoodsSold: {
+                      $sum: { $multiply: ["$quantity", "$productData.purchasePrice"] }
+                  }
                 }
             }
         ]);
 
-        let revenue = 0;
-        let purchaseCost = 0;
+      const { revenue = 0, costOfGoodsSold = 0 } = analytics[0] || {};
 
-        analytics.forEach((item) => {
-            if (item._id === "SALE") {
-                revenue = item.totalAmount;
-            }
+      const grossProfit = revenue - costOfGoodsSold;
 
-            if (item._id === "PURCHASE") {
-                purchaseCost = item.totalAmount;
-            }
-        });
+      const profitMargin = revenue > 0
+          ? (grossProfit / revenue) * 100
+          : 0;
 
-        const grossProfit = revenue - purchaseCost;
-
-        const profitMargin = revenue > 0
-            ? (grossProfit / revenue) * 100
-            : 0;
-
-        return res.status(200).json({
-            success: true,
-            message: "Profit and loss analytics fetched successfully",
-            data: {
-                revenue,
-                purchaseCost,
-                grossProfit,
-                profitMargin
-            }
-        });
+      return res.status(200).json({
+          success: true,
+          message: "Profit and loss analytics fetched successfully",
+          data: {
+              revenue,
+              costOfGoodsSold,
+              grossProfit,
+              profitMargin
+          }
+      });
 
     } catch (error) {
         console.error("Get Profit & Loss Error:", error);
@@ -1004,7 +996,7 @@ const getProfitLossOverTime = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
-        const matchStage = {};
+        const matchStage = { type: "SALE" };
 
         if (startDate || endDate) {
             matchStage.createdAt = {};
@@ -1021,80 +1013,44 @@ const getProfitLossOverTime = async (req, res) => {
         }
 
         const analytics = await StockMovements.aggregate([
+            { $match: matchStage },
             {
-                $match: matchStage
+                $lookup: {
+                    from: "products",
+                    localField: "product",
+                    foreignField: "_id",
+                    as: "productData"
+                }
             },
-
+            { $unwind: "$productData" },
             {
                 $group: {
                     _id: {
-                        date: {
-                            $dateToString: {
-                                format: "%Y-%m-%d",
-                                date: "$createdAt"
-                            }
-                        },
-                        type: "$type"
-                    },
-
-                    amount: {
-                        $sum: {
-                            $multiply: [
-                                "$quantity",
-                                "$unitPrice"
-                            ]
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$createdAt"
                         }
-                    }
-                }
-            },
-
-            {
-                $group: {
-                    _id: "$_id.date",
-
+                    },
                     revenue: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$_id.type", "SALE"] },
-                                "$amount",
-                                0
-                            ]
-                        }
+                        $sum: { $multiply: ["$quantity", "$unitPrice"] }
                     },
-
-                    purchaseCost: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$_id.type", "PURCHASE"] },
-                                "$amount",
-                                0
-                            ]
-                        }
+                    costOfGoodsSold: {
+                        $sum: { $multiply: ["$quantity", "$productData.purchasePrice"] }
                     }
                 }
             },
-
             {
                 $project: {
                     _id: 0,
                     date: "$_id",
                     revenue: 1,
-                    purchaseCost: 1,
-
+                    costOfGoodsSold: 1,
                     grossProfit: {
-                        $subtract: [
-                            "$revenue",
-                            "$purchaseCost"
-                        ]
+                        $subtract: ["$revenue", "$costOfGoodsSold"]
                     }
                 }
             },
-
-            {
-                $sort: {
-                    date: 1
-                }
-            }
+            { $sort: { date: 1 } }
         ]);
 
         return res.status(200).json({
@@ -1117,7 +1073,7 @@ const getProfitLossByProduct = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
 
-        const matchStage = {};
+        const matchStage = { type: "SALE" };
 
         if (startDate || endDate) {
             matchStage.createdAt = {};
@@ -1134,89 +1090,44 @@ const getProfitLossByProduct = async (req, res) => {
         }
 
         const analytics = await StockMovements.aggregate([
-            {
-                $match: matchStage
-            },
-
-            {
-                $group: {
-                    _id: {
-                        product: "$product",
-                        type: "$type"
-                    },
-
-                    amount: {
-                        $sum: {
-                            $multiply: [
-                                "$quantity",
-                                "$unitPrice"
-                            ]
-                        }
-                    }
-                }
-            },
-
-            {
-                $group: {
-                    _id: "$_id.product",
-
-                    revenue: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$_id.type", "SALE"] },
-                                "$amount",
-                                0
-                            ]
-                        }
-                    },
-
-                    purchaseCost: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$_id.type", "PURCHASE"] },
-                                "$amount",
-                                0
-                            ]
-                        }
-                    }
-                }
-            },
-
+            { $match: matchStage },
             {
                 $lookup: {
                     from: "products",
-                    localField: "_id",
+                    localField: "product",
                     foreignField: "_id",
                     as: "product"
                 }
             },
-
+            { $unwind: "$product" },
             {
-                $unwind: "$product"
-            },
-
-            {
-                $project: {
-                    _id: 0,
-
-                    product: {
-                        _id: "$product._id",
-                        name: "$product.name",
-                        sku: "$product.sku"
+                $group: {
+                    _id: "$product._id",
+                    name: { $first: "$product.name" },
+                    sku: { $first: "$product.sku" },
+                    revenue: {
+                        $sum: { $multiply: ["$quantity", "$unitPrice"] }
                     },
-
-                    revenue: 1,
-                    purchaseCost: 1,
-
-                    grossProfit: {
-                        $subtract: [
-                            "$revenue",
-                            "$purchaseCost"
-                        ]
+                    costOfGoodsSold: {
+                        $sum: { $multiply: ["$quantity", "$product.purchasePrice"] }
                     }
                 }
             },
-
+            {
+                $project: {
+                    _id: 0,
+                    product: {
+                        _id: "$_id",
+                        name: "$name",
+                        sku: "$sku"
+                    },
+                    revenue: 1,
+                    costOfGoodsSold: 1,
+                    grossProfit: {
+                        $subtract: ["$revenue", "$costOfGoodsSold"]
+                    }
+                }
+            },
             {
                 $addFields: {
                     profitMargin: {
@@ -1224,12 +1135,7 @@ const getProfitLossByProduct = async (req, res) => {
                             { $gt: ["$revenue", 0] },
                             {
                                 $multiply: [
-                                    {
-                                        $divide: [
-                                            "$grossProfit",
-                                            "$revenue"
-                                        ]
-                                    },
+                                    { $divide: ["$grossProfit", "$revenue"] },
                                     100
                                 ]
                             },
@@ -1238,12 +1144,7 @@ const getProfitLossByProduct = async (req, res) => {
                     }
                 }
             },
-
-            {
-                $sort: {
-                    grossProfit: -1
-                }
-            }
+            { $sort: { grossProfit: -1 } }
         ]);
 
         return res.status(200).json({

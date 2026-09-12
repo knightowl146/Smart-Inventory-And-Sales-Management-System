@@ -250,6 +250,8 @@ const deleteProduct = async (req, res) => {
 
 //<-----------------PURCHASE PRODUCT--------------->
 const purchaseProduct = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
     const { quantity, unitPrice, supplierId } = req.body || {};
     const { id } = req.params;
@@ -319,14 +321,18 @@ const purchaseProduct = async (req, res) => {
       });
     }
 
-    // Update product quantity
+    session.startTransaction();
+
+    // Update product quantity inside the transaction
     const product = await Product.findByIdAndUpdate(
       id,
       { $inc: { quantity: quantity } },
-      { returnDocument: 'after', runValidators: true }
+      { returnDocument: 'after', runValidators: true, session }
     );
 
     if (!product) {
+      await session.abortTransaction();
+
       return res.status(404).json({
         success: false,
         message: "Product not found",
@@ -336,16 +342,24 @@ const purchaseProduct = async (req, res) => {
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity - quantity;
 
-    // Create stock movement
-    await StockMovement.create({
-      product: product._id,
-      type: "PURCHASE",
-      quantity: quantity,
-      unitPrice: unitPrice,
-      supplier: supplier._id,
-      prevQuantity: prevQuantity,
-      newQuantity: newQuantity,
-    });
+    // Create stock movement inside the same transaction
+    await StockMovement.create(
+      [
+        {
+          product: product._id,
+          type: "PURCHASE",
+          quantity: quantity,
+          unitPrice: unitPrice,
+          supplier: supplier._id,
+          prevQuantity: prevQuantity,
+          newQuantity: newQuantity,
+        },
+      ],
+      { session }
+    );
+
+    // Commit transaction
+    await session.commitTransaction();
 
     return res.status(200).json({
       success: true,
@@ -354,12 +368,19 @@ const purchaseProduct = async (req, res) => {
     });
 
   } catch (err) {
+    // Roll back everything if anything fails
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     console.error(err);
 
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
+  } finally {
+    await session.endSession();
   }
 };
 
