@@ -24,8 +24,14 @@ const Analytics = () => {
 
   return (
     <div>
-      <Tabs tabs={tabs} active={active} onChange={setActive} />
-      <div style={{ marginTop: 20 }}>
+      <Tabs tabs={tabs} active={active} onChange={setActive} label="Analytics sections" />
+      <div
+        role="tabpanel"
+        id={`panel-${active}`}
+        aria-labelledby={`tab-${active}`}
+        tabIndex={0}
+        style={{ marginTop: 20 }}
+      >
         <ActiveComponent />
       </div>
     </div>

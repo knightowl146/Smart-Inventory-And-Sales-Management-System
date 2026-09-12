@@ -44,7 +44,7 @@ A comprehensive backend system for managing inventory, sales, purchases, and bus
 
 ### Prerequisites
 - Node.js (v14 or higher)
-- MongoDB (local or cloud instance)
+- MongoDB (local or cloud instance), **running as a replica set** (see note below)
 - Google Gemini API key (optional, for AI recommendations)
 
 ### Setup
@@ -60,19 +60,33 @@ cd smart-inventory-management-system
 npm install
 ```
 
-3. Configure environment variables:
+3. Set up MongoDB as a replica set:
 
-Create a `.env` file in the root directory:
+`purchaseProduct` and `sellProduct` run inside a Mongoose transaction so the Product update and the StockMovement record commit atomically. MongoDB only supports transactions on a replica set, so a plain standalone `mongod` will fail with `Transaction numbers are only allowed on a replica set member`.
+
+For local development, initialize a single-node replica set once:
+```bash
+mongod --replSet rs0 --dbpath <your-db-path>
+# in another terminal:
+mongosh --eval "rs.initiate()"
+```
+MongoDB Atlas clusters are already replica sets, so no extra setup is needed there.
+
+4. Configure environment variables:
+
+Copy `.env.example` to `.env` and fill in your values:
 
 ```env
 PORT=3000
-MONGO_URI=mongodb://localhost:27017/inventory-db
+MONGO_URI=mongodb://localhost:27017/inventory-db?replicaSet=rs0
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
+**Note**: The `replicaSet=rs0` query parameter is required for local MongoDB (see step 3). It is not needed for MongoDB Atlas connection strings, which are already replica sets.
+
 **Note**: The `GEMINI_API_KEY` is optional. Stock recommendations will work with deterministic calculations even without it.
 
-4. Start the server:
+5. Start the server:
 
 ```bash
 # Development mode with auto-reload
@@ -83,6 +97,38 @@ npm start
 ```
 
 The server will start on `http://localhost:3000`
+
+## Frontend
+
+The `frontend/` directory contains a separate React (Vite) single-page app that consumes this backend's API - Products, Customers, Suppliers, Sales, Purchases, Inventory, Movements, Dashboard, Analytics, AI Recommendations, and Reports (with CSV/XLSX/PDF export).
+
+### Setup
+
+```bash
+cd frontend
+npm install
+```
+
+Configure the API base URL in `frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000/api
+```
+
+### Run
+
+```bash
+# Development server with hot reload (default: http://localhost:5173)
+npm run dev
+
+# Production build (outputs to frontend/dist)
+npm run build
+
+# Preview a production build locally
+npm run preview
+```
+
+The backend server must be running (see Installation above) for the frontend to load data.
 
 ## API Documentation
 
@@ -554,7 +600,7 @@ npm test -- --coverage
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
 | `PORT` | No | Server port | 3000 |
-| `MONGO_URI` | Yes | MongoDB connection string | - |
+| `MONGO_URI` | Yes | MongoDB connection string. Local URIs must include `?replicaSet=rs0` (transactions require a replica set) | - |
 | `GEMINI_API_KEY` | No | Google Gemini API key for AI recommendations | - |
 
 **Getting Gemini API Key:**

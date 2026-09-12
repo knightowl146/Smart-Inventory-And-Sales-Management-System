@@ -147,6 +147,7 @@ const Customers = () => {
       <div className="page-toolbar">
         <input
           type="text"
+          aria-label="Filter customers by name, phone or email"
           placeholder="Filter by name, phone or email"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -176,7 +177,7 @@ const Customers = () => {
           }
         >
           <form className="form-grid" onSubmit={handleSubmit}>
-            {formError && <div className="error-banner"><p>{formError}</p></div>}
+            {formError && <div className="error-banner" role="alert"><p>{formError}</p></div>}
 
             <FormField label="Name" htmlFor="name">
               <input id="name" value={formValues.name} onChange={handleFieldChange("name")} required />

@@ -86,7 +86,7 @@ const Inventory = () => {
         <StatCard label="Inventory value" value={health ? health.inventoryValue.toFixed(2) : "—"} />
       </div>
 
-      {healthError && <div className="error-banner"><p>{healthError}</p></div>}
+      {healthError && <div className="error-banner" role="alert"><p>{healthError}</p></div>}
 
       <DataTable
         columns={columns}

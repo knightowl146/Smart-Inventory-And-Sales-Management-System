@@ -32,34 +32,47 @@ const navSections = [
   },
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ open, onNavigate }) => {
   return (
-    <aside className="sidebar">
-      <div className="sidebar__brand">
-        <span className="sidebar__brand-mark">SI</span>
-        <span className="sidebar__brand-name">Smart Inventory</span>
-      </div>
+    <>
+      <aside
+        className={`sidebar${open ? " sidebar--open" : ""}`}
+        aria-label="Main navigation"
+      >
+        <div className="sidebar__brand">
+          <span className="sidebar__brand-mark">SI</span>
+          <span className="sidebar__brand-name">Smart Inventory</span>
+        </div>
 
-      <nav className="sidebar__nav">
-        {navSections.map((section) => (
-          <div className="sidebar__section" key={section.title}>
-            <p className="sidebar__section-title">{section.title}</p>
-            {section.links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  "sidebar__link" + (isActive ? " sidebar__link--active" : "")
-                }
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </div>
-        ))}
-      </nav>
-    </aside>
+        <nav className="sidebar__nav">
+          {navSections.map((section) => (
+            <div className="sidebar__section" key={section.title}>
+              <p className="sidebar__section-title">{section.title}</p>
+              {section.links.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.end}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    "sidebar__link" + (isActive ? " sidebar__link--active" : "")
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+      </aside>
+      {open && (
+        <div
+          className="sidebar-backdrop sidebar-backdrop--visible"
+          onClick={onNavigate}
+          aria-hidden="true"
+        />
+      )}
+    </>
   );
 };
 

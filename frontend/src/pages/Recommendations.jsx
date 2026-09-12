@@ -145,6 +145,7 @@ const Recommendations = () => {
         </div>
         <input
           type="text"
+          aria-label="Search products"
           placeholder="Search products"
           value={search}
           onChange={(event) => {

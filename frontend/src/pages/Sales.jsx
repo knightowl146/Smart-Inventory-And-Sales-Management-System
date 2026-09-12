@@ -115,8 +115,8 @@ const Sales = () => {
         <h2 className="panel__title">Record a sale</h2>
 
         <form className="form-grid" onSubmit={handleSubmit}>
-          {formError && <div className="error-banner"><p>{formError}</p></div>}
-          {successMessage && <div className="success-banner"><p>{successMessage}</p></div>}
+          {formError && <div className="error-banner" role="alert"><p>{formError}</p></div>}
+          {successMessage && <div className="success-banner" role="status"><p>{successMessage}</p></div>}
 
           <FormField label="Product" htmlFor="productId">
             <select id="productId" value={formValues.productId} onChange={handleProductChange} required>

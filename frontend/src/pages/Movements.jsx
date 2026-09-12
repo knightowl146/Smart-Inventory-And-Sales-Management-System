@@ -90,11 +90,12 @@ const Movements = () => {
   return (
     <div>
       <div className="page-toolbar">
-        <div className="filter-tabs">
+        <div className="filter-tabs" role="group" aria-label="Filter by movement type">
           {["", "SALE", "PURCHASE"].map((option) => (
             <button
               key={option || "all"}
               type="button"
+              aria-pressed={type === option}
               className={`filter-tab${type === option ? " filter-tab--active" : ""}`}
               onClick={() => {
                 setType(option);

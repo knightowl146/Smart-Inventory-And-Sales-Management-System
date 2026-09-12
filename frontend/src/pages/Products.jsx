@@ -195,6 +195,7 @@ const Products = () => {
         <form className="search-form" onSubmit={handleSearchSubmit}>
           <input
             type="text"
+            aria-label="Search products by name or SKU"
             placeholder="Search by name or SKU"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
@@ -232,7 +233,7 @@ const Products = () => {
           }
         >
           <form className="form-grid" onSubmit={handleSubmit}>
-            {formError && <div className="error-banner"><p>{formError}</p></div>}
+            {formError && <div className="error-banner" role="alert"><p>{formError}</p></div>}
 
             <FormField label="Name" htmlFor="name">
               <input id="name" value={formValues.name} onChange={handleFieldChange("name")} required />
