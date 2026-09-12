@@ -1127,16 +1127,6 @@ const getCustomerReport = async (req, res) => {
   }
 };
 
-module.exports = {
-  getSalesReport,
-  getPurchaseReport,
-  getInventoryReport,
-  getProfitLossReport,
-  getSupplierReport,
-  getCustomerReport
-};
-
-
 //<-----------------EXPORT SALES REPORT----------------->
 const exportSalesReport = async (req, res) => {
   try {

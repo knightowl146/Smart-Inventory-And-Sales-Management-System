@@ -17,7 +17,7 @@ const createProduct = async (req, res) => {
       });
     }
     //Validation for prices and quantities
-    if(quantity<=0 || !Number.isInteger(quantity) || purchasePrice<=0 || sellingPrice<=0 || !Number.isInteger(purchasePrice) || !Number.isInteger(sellingPrice) ){
+    if(quantity<0 || !Number.isInteger(quantity) || purchasePrice<=0 || sellingPrice<=0 || !Number.isInteger(purchasePrice) || !Number.isInteger(sellingPrice) ){
       return res.status(400).json({
         success: false,
         message: "Quantity and prices must be positive integers",
@@ -323,11 +323,11 @@ const purchaseProduct = async (req, res) => {
 
     session.startTransaction();
 
-    // Update product quantity inside the transaction
+    // Atomically increment product quantity, inside the transaction
     const product = await Product.findByIdAndUpdate(
       id,
       { $inc: { quantity: quantity } },
-      { returnDocument: 'after', runValidators: true, session }
+      { new: true, runValidators: true, session }
     );
 
     if (!product) {
@@ -342,7 +342,7 @@ const purchaseProduct = async (req, res) => {
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity - quantity;
 
-    // Create stock movement inside the same transaction
+    // Record stock movement inside the same transaction
     await StockMovement.create(
       [
         {
@@ -358,7 +358,6 @@ const purchaseProduct = async (req, res) => {
       { session }
     );
 
-    // Commit transaction
     await session.commitTransaction();
 
     return res.status(200).json({
@@ -368,13 +367,11 @@ const purchaseProduct = async (req, res) => {
     });
 
   } catch (err) {
-    // Roll back everything if anything fails
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
 
     console.error(err);
-
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -453,7 +450,7 @@ const sellProduct = async (req, res) => {
     }
 
     // Check customer exists
-    const customer = await Customer.findById(customerId).session(session);
+    const customer = await Customer.findById(customerId);
 
     if (!customer) {
       return res.status(404).json({
@@ -462,10 +459,9 @@ const sellProduct = async (req, res) => {
       });
     }
 
-    // Start transaction
     session.startTransaction();
 
-    // Filter checks if stock is sufficient before updating
+    // Atomically decrement only if sufficient stock exists, inside the transaction
     const product = await Product.findOneAndUpdate(
       {
         _id: id,
@@ -475,13 +471,13 @@ const sellProduct = async (req, res) => {
         $inc: { quantity: -quantity },
       },
       {
-        returnDocument: "after",
+        new: true,
         runValidators: true,
         session,
       }
     );
 
-    // product == null when filter rejects the sale
+    // product == null when filter rejects the sale (insufficient stock or missing product)
     if (!product) {
       await session.abortTransaction();
 
@@ -494,7 +490,7 @@ const sellProduct = async (req, res) => {
     const newQuantity = product.quantity;
     const prevQuantity = newQuantity + quantity;
 
-    // Create stock movement inside same transaction
+    // Record stock movement inside the same transaction
     await StockMovement.create(
       [
         {
@@ -510,7 +506,6 @@ const sellProduct = async (req, res) => {
       { session }
     );
 
-    // Commit transaction
     await session.commitTransaction();
 
     return res.status(200).json({
@@ -520,22 +515,20 @@ const sellProduct = async (req, res) => {
     });
 
   } catch (error) {
-    // Roll back everything if anything fails
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
 
     console.error(error);
-
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Internal server error",
     });
-
   } finally {
     await session.endSession();
   }
 };
+
 
 module.exports = {
   createProduct,
