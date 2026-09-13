@@ -9,6 +9,38 @@ const Customer = require("../models/Customer");
 // as a catastrophic-backtracking pattern (ReDoS) or to match unintended data.
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Validates the optional `date` a caller may send with a purchase or sale so a
+// movement can be recorded as having happened in the past (backfilling history,
+// seeding demo data, importing from another system). Returns either
+// { date: Date|null } on success or { error: "..." } describing the problem.
+//
+// Omitting `date` is the normal case and leaves timestamping to the schema's
+// `timestamps: true`, so existing callers are unaffected.
+const parseMovementDate = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return { date: null };
+  }
+
+  if (typeof value !== "string" && !(value instanceof Date)) {
+    return { error: "Date must be an ISO 8601 date string" };
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+
+  if (isNaN(parsed.getTime())) {
+    return { error: "Date must be a valid ISO 8601 date string" };
+  }
+
+  // A movement cannot have happened in the future. Allow a small skew so a
+  // client whose clock runs slightly fast isn't rejected.
+  const SKEW_MS = 60 * 1000;
+  if (parsed.getTime() > Date.now() + SKEW_MS) {
+    return { error: "Date cannot be in the future" };
+  }
+
+  return { date: parsed };
+};
+
 //<------------CREATE PRODUCT----------->
 const createProduct = async (req, res) => {
   try {
@@ -259,8 +291,18 @@ const purchaseProduct = async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
-    const { quantity, unitPrice, supplierId } = req.body || {};
+    const { quantity, unitPrice, supplierId, date } = req.body || {};
     const { id } = req.params;
+
+    // Validate optional backdating
+    const { date: movementDate, error: dateError } = parseMovementDate(date);
+
+    if (dateError) {
+      return res.status(400).json({
+        success: false,
+        message: dateError,
+      });
+    }
 
     // Validate product ID
     const isValidId = mongoose.Types.ObjectId.isValid(id);
@@ -359,9 +401,18 @@ const purchaseProduct = async (req, res) => {
           supplier: supplier._id,
           prevQuantity: prevQuantity,
           newQuantity: newQuantity,
+          // Only present when the caller backdated the movement.
+          ...(movementDate && {
+            createdAt: movementDate,
+            updatedAt: movementDate,
+          }),
         },
       ],
-      { session }
+      // `timestamps: false` stops the schema's automatic timestamps from
+      // overwriting the explicit dates above. Without it Mongoose always
+      // rewrites `updatedAt` on insert, so a backdated movement would carry a
+      // today's-date `updatedAt`.
+      { session, ...(movementDate && { timestamps: false }) }
     );
 
     await session.commitTransaction();
@@ -392,8 +443,18 @@ const sellProduct = async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
-    const { quantity, unitPrice, customerId } = req.body || {};
+    const { quantity, unitPrice, customerId, date } = req.body || {};
     const { id } = req.params;
+
+    // Validate optional backdating
+    const { date: movementDate, error: dateError } = parseMovementDate(date);
+
+    if (dateError) {
+      return res.status(400).json({
+        success: false,
+        message: dateError,
+      });
+    }
 
     // Validate product ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -507,9 +568,16 @@ const sellProduct = async (req, res) => {
           customer: customer._id,
           prevQuantity: prevQuantity,
           newQuantity: newQuantity,
+          // Only present when the caller backdated the movement.
+          ...(movementDate && {
+            createdAt: movementDate,
+            updatedAt: movementDate,
+          }),
         },
       ],
-      { session }
+      // See the note in purchaseProduct: without `timestamps: false` Mongoose
+      // rewrites `updatedAt` on insert and the backdating is half-applied.
+      { session, ...(movementDate && { timestamps: false }) }
     );
 
     await session.commitTransaction();
