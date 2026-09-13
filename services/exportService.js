@@ -19,6 +19,36 @@ const PDFDocument = require("pdfkit");
 /* CSV                                                                  */
 /* ------------------------------------------------------------------ */
 
+// Characters that spreadsheet apps (Excel, Sheets, LibreOffice) treat as a
+// formula/command trigger when they appear first in a CSV cell, since CSV
+// carries no cell-type metadata and content type is inferred purely from
+// the text on open ("CSV/formula injection", OWASP-documented). Any string
+// field value from user-entered data (name, description, etc.) starting
+// with one of these gets a leading apostrophe, which spreadsheet apps
+// render as plain text instead of evaluating. Only applied to strings -
+// numeric fields (e.g. a real -5.2) are left untouched, since a JS Number
+// can't carry a formula and prefixing it would corrupt the value.
+// (XLSX export doesn't need this: ExcelJS writes these as typed string
+// cells, not formulas, so Excel won't evaluate them there - verified by
+// inspecting the generated sheet XML.)
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+const neutralizeFormulaInjection = (value) => {
+  if (typeof value === "string" && FORMULA_TRIGGER.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+};
+
+const sanitizeRowsForCSV = (data) =>
+  data.map((row) => {
+    const safeRow = {};
+    for (const key of Object.keys(row)) {
+      safeRow[key] = neutralizeFormulaInjection(row[key]);
+    }
+    return safeRow;
+  });
+
 /**
  * Convert an array of plain objects to a CSV string.
  *
@@ -35,9 +65,9 @@ const exportToCSV = (data, fields) => {
   }
 
   const resolvedFields = fields || Object.keys(data[0]);
-
+  const safeData = sanitizeRowsForCSV(data);
   const parser = new Parser({ fields: resolvedFields });
-  const csv = parser.parse(data);
+  const csv = parser.parse(safeData);
 
   // Prepend UTF-8 BOM so Excel opens it correctly without encoding issues
   return `\uFEFF${csv}`;

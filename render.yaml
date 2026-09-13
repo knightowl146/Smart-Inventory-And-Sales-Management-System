@@ -1,0 +1,34 @@
+# Render Blueprint - https://render.com/docs/blueprint-spec
+#
+# Deploys the backend API only. The frontend (frontend/) is deployed
+# separately to Vercel - see frontend/vercel.json and the README's
+# Deployment section for how the two are wired together via CORS_ORIGIN /
+# VITE_API_BASE_URL.
+#
+# To use: push this repo to GitHub, then in the Render dashboard choose
+# "New > Blueprint" and point it at the repo. Render reads this file and
+# creates the service below; you'll be prompted for the `sync: false`
+# values (MONGO_URI, GEMINI_API_KEY, CORS_ORIGIN) since those shouldn't be
+# committed to the repo.
+
+services:
+  - type: web
+    name: smart-inventory-api
+    runtime: node
+    # "free" spins the service down after inactivity (adds a cold-start
+    # delay on the next request) - fine for trying this out. Switch to
+    # "starter" or higher once you want it always-on.
+    plan: free
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false # set to your MongoDB Atlas connection string in the Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false # optional - leave blank to use deterministic (non-AI) recommendations
+      - key: CORS_ORIGIN
+        sync: false # set to your deployed frontend's URL (e.g. https://your-app.vercel.app) once it exists

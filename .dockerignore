@@ -1,0 +1,30 @@
+# Never ship secrets or local env into the image - real config comes from
+# the platform's environment variables at deploy time.
+.env
+.env.*
+!.env.example
+
+node_modules
+npm-debug.log*
+
+# Frontend is deployed separately (see frontend/vercel.json) - not part of
+# the backend image.
+frontend/
+
+# Not needed at runtime, and mongodb-memory-server's cached test binaries
+# would otherwise bloat the build context significantly.
+tests/
+coverage/
+
+.git
+.gitignore
+.github/
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs aren't needed inside the running container
+*.md

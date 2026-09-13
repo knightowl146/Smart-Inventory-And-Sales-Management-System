@@ -29,12 +29,11 @@ A comprehensive backend system for managing inventory, sales, purchases, and bus
 - **Date Range Filtering**: Flexible date-based reporting
 
 ## Technology Stack
-
 - **Runtime**: Node.js
 - **Framework**: Express.js
 - **Database**: MongoDB with Mongoose ODM
 - **AI Integration**: Google Gemini API (free tier)
-- **Export Libraries**: 
+- **Export Libraries**:
   - json2csv (CSV export)
   - ExcelJS (XLSX export)
   - PDFKit (PDF generation)
@@ -70,12 +69,12 @@ mongod --replSet rs0 --dbpath <your-db-path>
 # in another terminal:
 mongosh --eval "rs.initiate()"
 ```
+
 MongoDB Atlas clusters are already replica sets, so no extra setup is needed there.
 
 4. Configure environment variables:
 
 Copy `.env.example` to `.env` and fill in your values:
-
 ```env
 PORT=3000
 MONGO_URI=mongodb://localhost:27017/inventory-db?replicaSet=rs0
@@ -87,7 +86,6 @@ GEMINI_API_KEY=your_gemini_api_key_here
 **Note**: The `GEMINI_API_KEY` is optional. Stock recommendations will work with deterministic calculations even without it.
 
 5. Start the server:
-
 ```bash
 # Development mode with auto-reload
 npm run dev
@@ -103,20 +101,17 @@ The server will start on `http://localhost:3000`
 The `frontend/` directory contains a separate React (Vite) single-page app that consumes this backend's API - Products, Customers, Suppliers, Sales, Purchases, Inventory, Movements, Dashboard, Analytics, AI Recommendations, and Reports (with CSV/XLSX/PDF export).
 
 ### Setup
-
 ```bash
 cd frontend
 npm install
 ```
 
 Configure the API base URL in `frontend/.env`:
-
 ```env
 VITE_API_BASE_URL=http://localhost:3000/api
 ```
 
 ### Run
-
 ```bash
 # Development server with hot reload (default: http://localhost:5173)
 npm run dev
@@ -147,7 +142,6 @@ All endpoints support both `/api` prefix and without prefix.
 ```http
 POST /api/products
 ```
-
 **Body:**
 ```json
 {
@@ -187,7 +181,6 @@ DELETE /api/products/:id
 ```http
 POST /api/products/:id/purchase
 ```
-
 **Body:**
 ```json
 {
@@ -201,7 +194,6 @@ POST /api/products/:id/purchase
 ```http
 POST /api/products/:id/sell
 ```
-
 **Body:**
 ```json
 {
@@ -219,7 +211,6 @@ POST /api/products/:id/sell
 ```http
 GET /api/analytics/sales?startDate=2024-01-01&endDate=2024-12-31
 ```
-
 **Response includes:**
 - Total revenue and units sold
 - Sales count
@@ -256,7 +247,6 @@ GET /api/analytics/inventory-by-category
 ```http
 GET /api/analytics/inventory-health
 ```
-
 **Returns:**
 - Total products count
 - Low stock count
@@ -294,7 +284,6 @@ GET /api/analytics/inventory-alerts
 ```http
 GET /api/analytics/inventory/stock-recommendations
 ```
-
 **Response includes for each product:**
 - Current stock and low stock threshold
 - Sales metrics (last 7 days, last 30 days, previous 30 days)
@@ -332,7 +321,6 @@ GET /api/analytics/inventory/stock-recommendations/:productId
 ```http
 GET /api/analytics/dashboard/summary
 ```
-
 **Returns comprehensive overview:**
 - **Overview**: Total products, customers, stock, inventory value, alerts
 - **Sales**: Last 30 days sales with growth comparison
@@ -352,7 +340,6 @@ GET /api/analytics/dashboard/summary
 ```http
 GET /api/reports/sales?startDate=2024-01-01&endDate=2024-12-31
 ```
-
 **Returns:**
 - Period summary (transactions, units, revenue)
 - Sales by product
@@ -364,7 +351,6 @@ GET /api/reports/sales?startDate=2024-01-01&endDate=2024-12-31
 ```http
 GET /api/reports/purchases?startDate=2024-01-01&endDate=2024-12-31
 ```
-
 **Returns:**
 - Period summary (transactions, units, cost)
 - Purchases by product
@@ -376,7 +362,6 @@ GET /api/reports/purchases?startDate=2024-01-01&endDate=2024-12-31
 ```http
 GET /api/reports/inventory
 ```
-
 **Returns:**
 - Inventory summary (total products, quantity, value)
 - Inventory by category
@@ -388,7 +373,6 @@ GET /api/reports/inventory
 ```http
 GET /api/reports/profit-loss?startDate=2024-01-01&endDate=2024-12-31
 ```
-
 **Returns:**
 - Period summary (revenue, COGS, gross profit, margin)
 - Profit by category
@@ -398,7 +382,6 @@ GET /api/reports/profit-loss?startDate=2024-01-01&endDate=2024-12-31
 ```http
 GET /api/reports/suppliers?startDate=2024-01-01&endDate=2024-12-31&supplierId=optional
 ```
-
 **Returns:**
 - Supplier performance metrics
 - Products by supplier
@@ -408,7 +391,6 @@ GET /api/reports/suppliers?startDate=2024-01-01&endDate=2024-12-31&supplierId=op
 ```http
 GET /api/reports/customers?startDate=2024-01-01&endDate=2024-12-31&customerId=optional
 ```
-
 **Returns:**
 - Customer performance metrics
 - Products by customer
@@ -419,7 +401,6 @@ GET /api/reports/customers?startDate=2024-01-01&endDate=2024-12-31&customerId=op
 ## Export Endpoints
 
 All reports can be exported in CSV, XLSX, or PDF format:
-
 ```http
 GET /api/reports/sales/export?format=csv&startDate=2024-01-01
 GET /api/reports/purchases/export?format=xlsx
@@ -446,7 +427,6 @@ GET /api/reports/profit-loss/export?format=csv
 ```http
 POST /api/customers
 ```
-
 **Body:**
 ```json
 {
@@ -486,7 +466,6 @@ GET /api/analytics/customer/top?limit=10
 ```http
 POST /api/suppliers
 ```
-
 **Body:**
 ```json
 {
@@ -512,7 +491,6 @@ GET /api/analytics/supplier-performance?limit=10&startDate=2024-01-01
 ## Testing
 
 Run the test suite:
-
 ```bash
 # Run all tests
 npm test
@@ -539,13 +517,13 @@ npm test -- --coverage
 ### Product Schema
 ```javascript
 {
-  name: String,           // Product name
-  sku: String,            // Unique SKU
-  category: String,       // Product category
-  purchasePrice: Number,  // Cost price
-  sellingPrice: Number,   // Retail price
-  unitPrice: Number,      // Current unit price
-  quantity: Number,       // Current stock
+  name: String,             // Product name
+  sku: String,              // Unique SKU
+  category: String,         // Product category
+  purchasePrice: Number,    // Cost price
+  sellingPrice: Number,     // Retail price
+  unitPrice: Number,        // Current unit price
+  quantity: Number,         // Current stock
   lowStockThreshold: Number,
   description: String,
   createdAt: Date,
@@ -556,12 +534,12 @@ npm test -- --coverage
 ### StockMovement Schema
 ```javascript
 {
-  product: ObjectId,      // Reference to Product
-  type: String,           // "SALE" or "PURCHASE"
+  product: ObjectId,    // Reference to Product
+  type: String,         // "SALE" or "PURCHASE"
   quantity: Number,
   unitPrice: Number,
-  supplier: ObjectId,     // Required for PURCHASE
-  customer: ObjectId,     // Required for SALE
+  supplier: ObjectId,   // Required for PURCHASE
+  customer: ObjectId,   // Required for SALE
   prevQuantity: Number,
   newQuantity: Number,
   createdAt: Date,
@@ -573,7 +551,7 @@ npm test -- --coverage
 ```javascript
 {
   name: String,
-  phone: String,          // Unique
+  phone: String,        // Unique
   email: String,
   address: String,
   createdAt: Date,
@@ -602,6 +580,7 @@ npm test -- --coverage
 | `PORT` | No | Server port | 3000 |
 | `MONGO_URI` | Yes | MongoDB connection string. Local URIs must include `?replicaSet=rs0` (transactions require a replica set) | - |
 | `GEMINI_API_KEY` | No | Google Gemini API key for AI recommendations | - |
+| `CORS_ORIGIN` | Production only | Comma-separated list of allowed frontend origin(s), e.g. `https://your-app.vercel.app`. Unset in production blocks all cross-origin browser requests; unset in development allows any origin | - |
 
 **Getting Gemini API Key:**
 1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
@@ -612,37 +591,99 @@ npm test -- --coverage
 
 ---
 
+## Deployment
+
+The backend and frontend are deployed separately and talk to each other over
+HTTPS (not same-origin), so each side needs to know the other's URL.
+
+### 1. Database - MongoDB Atlas
+
+Atlas clusters are already replica sets, so the transaction requirement
+(see the `MONGO_URI` note above) is satisfied automatically - no extra setup
+needed there. Create a cluster, create a database user, and copy the
+`mongodb+srv://...` connection string.
+
+### 2. Backend - Render
+
+A `render.yaml` Blueprint is included at the repo root. In the Render
+dashboard: **New > Blueprint**, point it at this repo. Render will create a
+web service from it and prompt you for the values marked `sync: false`:
+
+- `MONGO_URI` - your Atlas connection string
+- `GEMINI_API_KEY` - optional
+- `CORS_ORIGIN` - leave blank for now; you'll set this after step 3
+
+The service exposes `GET /health` (added specifically for this), which
+Render's Blueprint already points at via `healthCheckPath` for zero-downtime
+deploys.
+
+A `Dockerfile` is also included at the repo root if you'd rather deploy to
+Railway, Fly.io, or a self-hosted box instead - none of the above is
+Render-specific except `render.yaml` itself.
+
+### 3. Frontend - Vercel
+
+Import this repo into Vercel and set the project's **Root Directory** to
+`frontend` (Vercel auto-detects the Vite framework preset from there;
+`frontend/vercel.json` handles the SPA routing fallback so direct links to
+routes like `/products` don't 404 on refresh). Set one environment variable
+in the Vercel project settings:
+
+- `VITE_API_BASE_URL` = your Render service's URL + `/api`, e.g.
+  `https://smart-inventory-api.onrender.com/api`
+
+(Vite bakes `VITE_*` env vars into the build at build time, so this must be
+set in Vercel's dashboard, not just in the committed `frontend/.env`, which
+is only a local-dev default.)
+
+### 4. Close the loop
+
+Once the frontend has a URL, go back to the Render service's environment
+variables and set `CORS_ORIGIN` to that Vercel URL, then redeploy the
+backend. Until this is set, the production backend blocks cross-origin
+browser requests by design (see the `CORS_ORIGIN` note above).
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`:
+backend `npm test`, and frontend `npm run lint` + `npm run build`. This is
+independent of the Render/Vercel deploys, which run their own build steps
+on push - CI is a pre-check so breakage is caught before either platform
+tries to deploy it.
+
+---
+
 ## Architecture
 
 ### Request Flow
 ```
 Client Request
-    ↓
+      ↓
 Express Routes
-    ↓
+      ↓
 Validation Middleware (if applicable)
-    ↓
+      ↓
 Controller
-    ↓
+      ↓
 Business Logic / Analytics Service
-    ↓
+      ↓
 MongoDB / Mongoose
-    ↓
+      ↓
 Response
 ```
 
 ### AI Integration Flow
 ```
 MongoDB
-    ↓
+      ↓
 Deterministic Metrics Calculation (source of truth)
-    ↓
+      ↓
 Recommendation Service
-    ↓
+      ↓
 [Optional] Gemini AI (explanations & insights)
-    ↓
+      ↓
 Fallback to rule-based if AI unavailable
-    ↓
+      ↓
 Response with metrics + explanation
 ```
 
@@ -651,7 +692,6 @@ Response with metrics + explanation
 ## Error Handling
 
 All endpoints return consistent error responses:
-
 ```json
 {
   "success": false,
@@ -685,7 +725,6 @@ All endpoints return consistent error responses:
 ---
 
 ## Performance Considerations
-
 - MongoDB aggregation pipelines for analytics
 - Efficient indexing on frequently queried fields
 - Pagination for large datasets
@@ -695,7 +734,6 @@ All endpoints return consistent error responses:
 ---
 
 ## Security Best Practices
-
 - API keys stored in environment variables
 - Input validation on all endpoints
 - MongoDB injection prevention
@@ -733,15 +771,15 @@ For issues and questions:
 ## Roadmap
 
 ### Completed Features
-✅ Product, Customer, Supplier CRUD  
-✅ Sales and Purchase processing  
-✅ Comprehensive analytics endpoints  
-✅ AI-powered stock recommendations  
-✅ Executive dashboard  
-✅ Comprehensive reporting  
-✅ Multi-format export (CSV, XLSX, PDF)  
-✅ Stock movement tracking  
-✅ Inventory health monitoring  
+✅ Product, Customer, Supplier CRUD
+✅ Sales and Purchase processing
+✅ Comprehensive analytics endpoints
+✅ AI-powered stock recommendations
+✅ Executive dashboard
+✅ Comprehensive reporting
+✅ Multi-format export (CSV, XLSX, PDF)
+✅ Stock movement tracking
+✅ Inventory health monitoring
 
 ### Potential Future Enhancements
 - User authentication and authorization
@@ -756,7 +794,6 @@ For issues and questions:
 ---
 
 ## Acknowledgments
-
 - Google Gemini API for AI recommendations
 - MongoDB for database
 - Express.js framework

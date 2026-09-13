@@ -4,6 +4,11 @@ const StockMovement = require("../models/StockMovements");
 const Supplier = require("../models/Supplier");
 const Customer = require("../models/Customer");
 
+// Escapes regex metacharacters in user-supplied search text before it's used
+// to build a MongoDB $regex filter, so a crafted search string can't be used
+// as a catastrophic-backtracking pattern (ReDoS) or to match unintended data.
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 //<------------CREATE PRODUCT----------->
 const createProduct = async (req, res) => {
   try {
@@ -94,9 +99,10 @@ const getProducts = async (req, res) => {
     }
 
     if (search) {
+      const safeSearch = escapeRegex(search);
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { sku: { $regex: search, $options: "i" } },
+        { name: { $regex: safeSearch, $options: "i" } },
+        { sku: { $regex: safeSearch, $options: "i" } },
       ];
     }
 
