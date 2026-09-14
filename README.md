@@ -1,801 +1,287 @@
 # Smart Inventory & Sales Management System
 
-A comprehensive backend system for managing inventory, sales, purchases, and business analytics with AI-powered stock recommendations.
+A stock and sales system for a small shop, with role-based access, demand
+forecasting that publishes its own error rate, and an AI assistant bound by the
+same permission table as the people using it.
 
-## Features
+**Live demo** → https://smart-inventory-and-sales-managemen-blue.vercel.app
 
-### Core Functionality
-- **Product Management**: CRUD operations for products with SKU tracking
-- **Inventory Management**: Real-time stock tracking with automatic updates
-- **Sales Processing**: Process sales with customer tracking and automatic stock reduction
-- **Purchase Management**: Record purchases from suppliers with automatic stock increase
-- **Customer Management**: Track customer information and purchase history
-- **Supplier Management**: Manage supplier relationships and purchase history
-
-### Analytics & Reporting
-- **Sales Analytics**: Revenue, units sold, sales trends, and top products
-- **Purchase Analytics**: Purchase costs, volume tracking, supplier performance
-- **Inventory Analytics**: Stock valuation, ABC analysis, turnover rates
-- **Profit & Loss**: Revenue vs COGS, gross profit, margin analysis
-- **Customer Analytics**: Customer lifetime value, purchase patterns, spending trends
-- **Supplier Analytics**: Supplier performance, purchase concentration
-
-### Advanced Features
-- **AI-Powered Stock Recommendations**: Intelligent reorder suggestions using Google Gemini
-- **Executive Dashboard**: Comprehensive business overview with KPIs
-- **Inventory Health Monitoring**: Low stock alerts, out-of-stock tracking
-- **Multi-Format Export**: CSV, XLSX, and PDF export for all reports
-- **Time-Series Analysis**: Sales and purchase trends over time
-- **Date Range Filtering**: Flexible date-based reporting
-
-## Technology Stack
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **AI Integration**: Google Gemini API (free tier)
-- **Export Libraries**:
-  - json2csv (CSV export)
-  - ExcelJS (XLSX export)
-  - PDFKit (PDF generation)
-- **Testing**: Jest + Supertest + MongoDB Memory Server
-
-## Installation
-
-### Prerequisites
-- Node.js (v14 or higher)
-- MongoDB (local or cloud instance), **running as a replica set** (see note below)
-- Google Gemini API key (optional, for AI recommendations)
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd smart-inventory-management-system
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Set up MongoDB as a replica set:
-
-`purchaseProduct` and `sellProduct` run inside a Mongoose transaction so the Product update and the StockMovement record commit atomically. MongoDB only supports transactions on a replica set, so a plain standalone `mongod` will fail with `Transaction numbers are only allowed on a replica set member`.
-
-For local development, initialize a single-node replica set once:
-```bash
-mongod --replSet rs0 --dbpath <your-db-path>
-# in another terminal:
-mongosh --eval "rs.initiate()"
-```
-
-MongoDB Atlas clusters are already replica sets, so no extra setup is needed there.
-
-4. Configure environment variables:
-
-Copy `.env.example` to `.env` and fill in your values:
-```env
-PORT=3000
-MONGO_URI=mongodb://localhost:27017/inventory-db?replicaSet=rs0
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-**Note**: The `replicaSet=rs0` query parameter is required for local MongoDB (see step 3). It is not needed for MongoDB Atlas connection strings, which are already replica sets.
-
-**Note**: The `GEMINI_API_KEY` is optional. Stock recommendations will work with deterministic calculations even without it.
-
-5. Start the server:
-```bash
-# Development mode with auto-reload
-npm run dev
-
-# Production mode
-npm start
-```
-
-The server will start on `http://localhost:3000`
-
-## Frontend
-
-The `frontend/` directory contains a separate React (Vite) single-page app that consumes this backend's API - Products, Customers, Suppliers, Sales, Purchases, Inventory, Movements, Dashboard, Analytics, AI Recommendations, and Reports (with CSV/XLSX/PDF export).
-
-### Setup
-```bash
-cd frontend
-npm install
-```
-
-Configure the API base URL in `frontend/.env`:
-```env
-VITE_API_BASE_URL=http://localhost:3000/api
-```
-
-### Run
-```bash
-# Development server with hot reload (default: http://localhost:5173)
-npm run dev
-
-# Production build (outputs to frontend/dist)
-npm run build
-
-# Preview a production build locally
-npm run preview
-```
-
-The backend server must be running (see Installation above) for the frontend to load data.
-
-## API Documentation
-
-### Base URL
-```
-http://localhost:3000
-```
-
-All endpoints support both `/api` prefix and without prefix.
+| | |
+|---|---|
+| **Backend** | Node 20, Express 5, Mongoose 9, MongoDB Atlas — deployed on Render |
+| **Frontend** | React 19, Vite, React Router 7, Recharts — deployed on Vercel |
+| **AI** | Gemini 2.5 Flash (tool calling, structured output, vision) |
+| **Testing** | Jest + Supertest, `mongodb-memory-server` |
 
 ---
 
-## Product Endpoints
-
-### Create Product
-```http
-POST /api/products
-```
-**Body:**
-```json
-{
-  "name": "Product Name",
-  "sku": "SKU-001",
-  "category": "Electronics",
-  "purchasePrice": 100,
-  "sellingPrice": 150,
-  "unitPrice": 150,
-  "quantity": 50,
-  "lowStockThreshold": 10,
-  "description": "Product description"
-}
-```
-
-### Get All Products
-```http
-GET /api/products?page=1&limit=10&category=Electronics&search=laptop
-```
-
-### Get Product by ID
-```http
-GET /api/products/:id
-```
-
-### Update Product
-```http
-PUT /api/products/:id
-```
-
-### Delete Product
-```http
-DELETE /api/products/:id
-```
-
-### Purchase Product (Add Stock)
-```http
-POST /api/products/:id/purchase
-```
-**Body:**
-```json
-{
-  "quantity": 20,
-  "unitPrice": 100,
-  "supplierId": "supplier_id_here"
-}
-```
-
-### Sell Product (Reduce Stock)
-```http
-POST /api/products/:id/sell
-```
-**Body:**
-```json
-{
-  "quantity": 5,
-  "unitPrice": 150,
-  "customerId": "customer_id_here"
-}
-```
-
----
-
-## Analytics Endpoints
-
-### Sales Analytics
-```http
-GET /api/analytics/sales?startDate=2024-01-01&endDate=2024-12-31
-```
-**Response includes:**
-- Total revenue and units sold
-- Sales count
-- Sales over time (daily breakdown)
-
-### Purchase Analytics
-```http
-GET /api/analytics/purchases?startDate=2024-01-01&endDate=2024-12-31
-```
-
-### Top Selling Products
-```http
-GET /api/analytics/top-selling-products?limit=10&startDate=2024-01-01
-```
-
-### Product Analytics
-```http
-GET /api/analytics/products/:productId?startDate=2024-01-01&endDate=2024-12-31
-```
-
-### Sales vs Purchases Comparison
-```http
-GET /api/analytics/sales-vs-purchases?startDate=2024-01-01&endDate=2024-12-31
-```
-
-### Category Analytics
-```http
-GET /api/analytics/sales-by-category
-GET /api/analytics/purchases-by-category
-GET /api/analytics/inventory-by-category
-```
-
-### Inventory Health
-```http
-GET /api/analytics/inventory-health
-```
-**Returns:**
-- Total products count
-- Low stock count
-- Out of stock count
-- Healthy stock count
-- Total inventory value
-
-### Profit & Loss
-```http
-GET /api/analytics/profit-loss?startDate=2024-01-01&endDate=2024-12-31
-GET /api/analytics/profit-loss-over-time
-GET /api/analytics/profit-loss/products
-```
-
-### Inventory Analysis
-```http
-GET /api/analytics/inventory-turnover?limit=10
-GET /api/analytics/dead-stock?days=30&limit=10
-GET /api/analytics/product-movement?limit=10
-GET /api/analytics/inventory-valuation
-GET /api/analytics/inventory-valuation/category
-GET /api/analytics/inventory/abc-analysis
-```
-
-### Alerts
-```http
-GET /api/analytics/inventory-alerts
-```
-
----
-
-## Stock Recommendation Endpoints
-
-### Get All Stock Recommendations
-```http
-GET /api/analytics/inventory/stock-recommendations
-```
-**Response includes for each product:**
-- Current stock and low stock threshold
-- Sales metrics (last 7 days, last 30 days, previous 30 days)
-- Average daily sales
-- Sales growth percentage
-- Days of stock remaining
-- Recommendation status: `REORDER_NOW`, `REORDER_SOON`, `HEALTHY`, `NO_SALES`
-- Recommended reorder quantity
-- AI-generated explanation (when available)
-
-### Get Single Product Recommendation
-```http
-GET /api/analytics/inventory/stock-recommendations/:productId
-```
-
-**Recommendation Logic:**
-- **NO_SALES**: Product has no sales in the last 30 days
-- **REORDER_NOW**: Stock ≤ low stock threshold OR stock = 0
-- **REORDER_SOON**: Days of stock remaining ≤ 7
-- **HEALTHY**: Stock levels are adequate
-
-**Reorder Quantity Calculation:**
-- Base quantity = (average daily sales × 30) - current stock
-- Adjusted for sales growth:
-  - +20% if growth ≥ 25%
-  - +10% if growth ≥ 10%
-  - -20% if growth ≤ -25%
-  - -10% if growth ≤ -10%
-
----
-
-## Dashboard Endpoint
-
-### Executive Dashboard Summary
-```http
-GET /api/analytics/dashboard/summary
-```
-**Returns comprehensive overview:**
-- **Overview**: Total products, customers, stock, inventory value, alerts
-- **Sales**: Last 30 days sales with growth comparison
-- **Purchases**: Last 30 days purchases with growth comparison
-- **Financial**: Revenue, COGS, profit, profit margin with growth
-- **Sales vs Purchases**: Comparison and ratio
-- **Inventory Health**: Stock distribution
-- **Trends**: Daily sales and purchase trends
-- **Low Stock Products**: Top 5 products needing attention
-- **Top Selling Products**: Top 5 best sellers
-
----
-
-## Report Endpoints
-
-### Sales Report
-```http
-GET /api/reports/sales?startDate=2024-01-01&endDate=2024-12-31
-```
-**Returns:**
-- Period summary (transactions, units, revenue)
-- Sales by product
-- Sales by category
-- Sales over time
-- Top customers
-
-### Purchase Report
-```http
-GET /api/reports/purchases?startDate=2024-01-01&endDate=2024-12-31
-```
-**Returns:**
-- Period summary (transactions, units, cost)
-- Purchases by product
-- Purchases by category
-- Purchases over time
-- Top suppliers
-
-### Inventory Report
-```http
-GET /api/reports/inventory
-```
-**Returns:**
-- Inventory summary (total products, quantity, value)
-- Inventory by category
-- Low stock products
-- Out of stock products
-- Stock movement summary
-
-### Profit & Loss Report
-```http
-GET /api/reports/profit-loss?startDate=2024-01-01&endDate=2024-12-31
-```
-**Returns:**
-- Period summary (revenue, COGS, gross profit, margin)
-- Profit by category
-- Profit over time
-
-### Supplier Report
-```http
-GET /api/reports/suppliers?startDate=2024-01-01&endDate=2024-12-31&supplierId=optional
-```
-**Returns:**
-- Supplier performance metrics
-- Products by supplier
-- Period summary
-
-### Customer Report
-```http
-GET /api/reports/customers?startDate=2024-01-01&endDate=2024-12-31&customerId=optional
-```
-**Returns:**
-- Customer performance metrics
-- Products by customer
-- Period summary
-
----
-
-## Export Endpoints
-
-All reports can be exported in CSV, XLSX, or PDF format:
-```http
-GET /api/reports/sales/export?format=csv&startDate=2024-01-01
-GET /api/reports/purchases/export?format=xlsx
-GET /api/reports/inventory/export?format=pdf
-GET /api/reports/profit-loss/export?format=csv
-```
-
-**Supported formats:**
-- `csv` - Comma-separated values (with UTF-8 BOM)
-- `xlsx` - Excel spreadsheet (with styled headers)
-- `pdf` - PDF document (landscape layout)
-
-**Export features:**
-- Automatic file download with proper headers
-- Date period included in PDF metadata
-- Formatted columns in XLSX
-- UTF-8 BOM in CSV for Excel compatibility
-
----
-
-## Customer Endpoints
-
-### Create Customer
-```http
-POST /api/customers
-```
-**Body:**
-```json
-{
-  "name": "Customer Name",
-  "phone": "1234567890",
-  "email": "customer@example.com",
-  "address": "Customer Address"
-}
-```
-
-### Get All Customers
-```http
-GET /api/customers
-```
-
-### Get Customer Purchase History
-```http
-GET /api/customer/:customerId/purchase-history?page=1&limit=10&startDate=2024-01-01
-```
-
-### Get Customer Spending Over Time
-```http
-GET /api/customer/:customerId/spending-over-time?startDate=2024-01-01
-```
-
-### Customer Analytics
-```http
-GET /api/analytics/customer
-GET /api/analytics/customer/top?limit=10
-```
-
----
-
-## Supplier Endpoints
-
-### Create Supplier
-```http
-POST /api/suppliers
-```
-**Body:**
-```json
-{
-  "name": "Supplier Name",
-  "email": "supplier@example.com",
-  "phone": "1234567890",
-  "address": "Supplier Address"
-}
-```
-
-### Get All Suppliers
-```http
-GET /api/suppliers
-```
-
-### Supplier Performance
-```http
-GET /api/analytics/supplier-performance?limit=10&startDate=2024-01-01
-```
-
----
-
-## Testing
-
-Run the test suite:
-```bash
-# Run all tests
-npm test
-
-# Run specific test file
-npm test -- tests/reports.test.js
-
-# Run with coverage
-npm test -- --coverage
-```
-
-**Test Coverage:**
-- Stock recommendations: 15 tests
-- Reports: 26 tests
-- Export functionality: 22 tests
-- Customer analytics: 63 tests
-- Dashboard summary: 83 tests
-- Total: 516+ passing tests
-
----
-
-## Data Models
-
-### Product Schema
-```javascript
-{
-  name: String,             // Product name
-  sku: String,              // Unique SKU
-  category: String,         // Product category
-  purchasePrice: Number,    // Cost price
-  sellingPrice: Number,     // Retail price
-  unitPrice: Number,        // Current unit price
-  quantity: Number,         // Current stock
-  lowStockThreshold: Number,
-  description: String,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-### StockMovement Schema
-```javascript
-{
-  product: ObjectId,    // Reference to Product
-  type: String,         // "SALE" or "PURCHASE"
-  quantity: Number,
-  unitPrice: Number,
-  supplier: ObjectId,   // Required for PURCHASE
-  customer: ObjectId,   // Required for SALE
-  prevQuantity: Number,
-  newQuantity: Number,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-### Customer Schema
-```javascript
-{
-  name: String,
-  phone: String,        // Unique
-  email: String,
-  address: String,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-### Supplier Schema
-```javascript
-{
-  name: String,
-  email: String,
-  phone: String,
-  address: String,
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
----
-
-## Environment Variables
-
-| Variable | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `PORT` | No | Server port | 3000 |
-| `MONGO_URI` | Yes | MongoDB connection string. Local URIs must include `?replicaSet=rs0` (transactions require a replica set) | - |
-| `GEMINI_API_KEY` | No | Google Gemini API key for AI recommendations | - |
-| `CORS_ORIGIN` | Production only | Comma-separated list of allowed frontend origin(s), e.g. `https://your-app.vercel.app`. Unset in production blocks all cross-origin browser requests; unset in development allows any origin | - |
-
-**Getting Gemini API Key:**
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Add to `.env` file
-
-**Note**: System works without Gemini API key using deterministic calculations. AI provides enhanced explanations when available.
-
----
-
-## Deployment
-
-The backend and frontend are deployed separately and talk to each other over
-HTTPS (not same-origin), so each side needs to know the other's URL.
-
-### 1. Database - MongoDB Atlas
-
-Atlas clusters are already replica sets, so the transaction requirement
-(see the `MONGO_URI` note above) is satisfied automatically - no extra setup
-needed there. Create a cluster, create a database user, and copy the
-`mongodb+srv://...` connection string.
-
-### 2. Backend - Render
-
-A `render.yaml` Blueprint is included at the repo root. In the Render
-dashboard: **New > Blueprint**, point it at this repo. Render will create a
-web service from it and prompt you for the values marked `sync: false`:
-
-- `MONGO_URI` - your Atlas connection string
-- `GEMINI_API_KEY` - optional
-- `CORS_ORIGIN` - leave blank for now; you'll set this after step 3
-
-The service exposes `GET /health` (added specifically for this), which
-Render's Blueprint already points at via `healthCheckPath` for zero-downtime
-deploys.
-
-A `Dockerfile` is also included at the repo root if you'd rather deploy to
-Railway, Fly.io, or a self-hosted box instead - none of the above is
-Render-specific except `render.yaml` itself.
-
-### 3. Frontend - Vercel
-
-Import this repo into Vercel and set the project's **Root Directory** to
-`frontend` (Vercel auto-detects the Vite framework preset from there;
-`frontend/vercel.json` handles the SPA routing fallback so direct links to
-routes like `/products` don't 404 on refresh). Set one environment variable
-in the Vercel project settings:
-
-- `VITE_API_BASE_URL` = your Render service's URL + `/api`, e.g.
-  `https://smart-inventory-api.onrender.com/api`
-
-(Vite bakes `VITE_*` env vars into the build at build time, so this must be
-set in Vercel's dashboard, not just in the committed `frontend/.env`, which
-is only a local-dev default.)
-
-### 4. Close the loop
-
-Once the frontend has a URL, go back to the Render service's environment
-variables and set `CORS_ORIGIN` to that Vercel URL, then redeploy the
-backend. Until this is set, the production backend blocks cross-origin
-browser requests by design (see the `CORS_ORIGIN` note above).
-
-### CI
-
-`.github/workflows/ci.yml` runs on every push and pull request to `main`:
-backend `npm test`, and frontend `npm run lint` + `npm run build`. This is
-independent of the Render/Vercel deploys, which run their own build steps
-on push - CI is a pre-check so breakage is caught before either platform
-tries to deploy it.
+## What it does
+
+A shop owner tracks stock, records sales and purchases, and sees where the money
+goes. An employee records sales and looks things up, and cannot see what
+anything cost.
+
+Beyond the CRUD, four things are worth a closer look:
+
+**Demand forecasting that admits when it is wrong.** Holt-Winters with weekly
+seasonality, but the method is chosen by how much history a product actually
+has — under 14 days it returns an honest average rather than fitting a seasonal
+curve to noise. Accuracy is measured by holding out the last 30 days and scoring
+against two free baselines, and the app displays that figure, including when the
+baseline wins.
+
+**Reorder points from inventory theory, not a rule of thumb.**
+`reorder point = μ·L + z·σ·√L` — lead-time demand plus a buffer sized to how
+*variable* demand is. A volatile product gets a bigger buffer than a steady one
+selling the same volume, which a "keep 30 days of stock" heuristic cannot express.
+
+**An assistant that can be refused.** Ask "which products made the most profit
+last month?" in plain English. The model picks from 12 read-only tools and fills
+in typed parameters; the server executes them. Each tool carries a permission
+checked against the *caller's* role before the handler runs — so an employee
+asking about margin is refused by the authorisation layer, not by a sentence in
+a prompt.
+
+**Invoice scanning.** Photograph a supplier's delivery note; the line items are
+extracted, fuzzy-matched to the catalogue, and presented as a draft purchase for
+confirmation. It never writes stock on its own.
 
 ---
 
 ## Architecture
 
-### Request Flow
-```
-Client Request
-      ↓
-Express Routes
-      ↓
-Validation Middleware (if applicable)
-      ↓
-Controller
-      ↓
-Business Logic / Analytics Service
-      ↓
-MongoDB / Mongoose
-      ↓
-Response
-```
+```mermaid
+flowchart TB
+    subgraph Browser
+        UI["React 19 + Vite<br/>access token in memory only"]
+    end
 
-### AI Integration Flow
-```
-MongoDB
-      ↓
-Deterministic Metrics Calculation (source of truth)
-      ↓
-Recommendation Service
-      ↓
-[Optional] Gemini AI (explanations & insights)
-      ↓
-Fallback to rule-based if AI unavailable
-      ↓
-Response with metrics + explanation
-```
+    subgraph Vercel
+        CDN["Static build<br/>/api/* rewrite → Render"]
+    end
 
----
+    subgraph Render["Render — Express 5"]
+        MW["requireAuth → can() → responseFilter → auditTrail"]
+        API["Products · Sales · Analytics · Reports"]
+        FC["Forecasting<br/>Holt-Winters · backtest · reorder point"]
+        AI["AI layer<br/>tool registry · budget cap · cache"]
+    end
 
-## Error Handling
+    subgraph External
+        DB[("MongoDB Atlas")]
+        GEM["Gemini 2.5 Flash"]
+    end
 
-All endpoints return consistent error responses:
-```json
-{
-  "success": false,
-  "message": "Error description"
-}
+    UI -->|"same-origin /api"| CDN
+    CDN --> MW
+    MW --> API
+    MW --> FC
+    MW --> AI
+    API --> DB
+    FC --> DB
+    AI -->|"tool calls, permission-checked"| DB
+    AI -.->|"language only, never figures"| GEM
 ```
 
-**HTTP Status Codes:**
-- `200` - Success
-- `201` - Created
-- `400` - Bad Request (validation errors)
-- `404` - Not Found
-- `500` - Internal Server Error
+The dotted line is the important one. Gemini writes sentences; every number in
+the app is computed in JavaScript. That is why the whole thing still works with
+no API key — the assistant says it is unconfigured, anomalies render with their
+numbers and no commentary, and briefings write themselves in plainer words.
 
 ---
 
-## Date Handling
+## Running it locally
 
-**Format**: `YYYY-MM-DD`
+**Prerequisites:** Node 20+, and MongoDB as a single-node replica set. The
+replica set is not optional — `purchaseProduct` and `sellProduct` run inside a
+transaction, and a standalone `mongod` rejects those.
 
-**Examples:**
-- `2024-01-01` - January 1, 2024
-- `2024-12-31` - December 31, 2024
+```bash
+mongod --replSet rs0 --dbpath <your-db-path>
+mongosh --eval "rs.initiate()"
+```
 
-**Behavior:**
-- Start date is inclusive (00:00:00)
-- End date is inclusive (23:59:59.999)
-- Invalid dates return 400 error
-- Omitted dates mean "all time"
+Then:
 
----
+```bash
+git clone <this repo> && cd Smart-Inventory-And-Sales-Management-System
+npm install
+cp .env.example .env          # then fill it in, see below
 
-## Performance Considerations
-- MongoDB aggregation pipelines for analytics
-- Efficient indexing on frequently queried fields
-- Pagination for large datasets
-- Lean queries for read-heavy operations
-- Connection pooling for database
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+# run twice → JWT_ACCESS_SECRET and JWT_REFRESH_SECRET
 
----
+npm run seed                  # catalogue
+npm run seed:owner            # the first owner account
+npm run seed:history          # 180 days of trading history
+npm run dev                   # :3000
+```
 
-## Security Best Practices
-- API keys stored in environment variables
-- Input validation on all endpoints
-- MongoDB injection prevention
-- Error messages don't expose implementation details
-- Proper ObjectId validation
+```bash
+cd frontend
+npm install
+npm run dev                   # :5173, proxying /api to :3000
+```
 
----
+### Environment
 
-## Contributing
+Everything is documented inline in `.env.example`. The ones that matter:
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit changes with clear messages
-4. Add tests for new features
-5. Ensure all tests pass
-6. Submit a pull request
+| Variable | Required | Notes |
+|---|---|---|
+| `MONGO_URI` | yes | Needs `?replicaSet=rs0` locally; Atlas is already a replica set |
+| `JWT_ACCESS_SECRET` | yes in production | Server refuses to boot without a strong value |
+| `JWT_REFRESH_SECRET` | yes in production | Must differ from the access secret |
+| `CORS_ORIGIN` | production | Your frontend's URL |
+| `GEMINI_API_KEY` | no | Every AI feature degrades gracefully without it |
+| `AI_MONTHLY_BUDGET_USD` | no | Soft cap, default $5. Calls stop when reached |
+| `OWNER_EMAIL` / `OWNER_PASSWORD` | for seeding | Read only by `npm run seed:owner` |
 
----
+There is no public sign-up route anywhere in the API. The first owner is seeded
+from the environment; every account after that is created by an owner from the
+Staff page.
 
-## License
+### Scripts
 
-ISC
+| Command | Does |
+|---|---|
+| `npm run dev` | Backend with nodemon |
+| `npm test` | The full suite |
+| `npm run seed` | Product catalogue |
+| `npm run seed:owner` | First owner account |
+| `npm run seed:history` | Backdated trading history — `-- --days=365`, `-- --fresh` |
+| `npm run briefing` | Generate a weekly briefing (for cron) |
+| `npm run reset:demo` | Rebuild the demo database (for cron, heavily guarded) |
 
----
+Seeding a remote database without editing `.env`:
 
-## Support
-
-For issues and questions:
-- Create an issue in the repository
-- Check existing documentation
-- Review test files for usage examples
-
----
-
-## Roadmap
-
-### Completed Features
-✅ Product, Customer, Supplier CRUD
-✅ Sales and Purchase processing
-✅ Comprehensive analytics endpoints
-✅ AI-powered stock recommendations
-✅ Executive dashboard
-✅ Comprehensive reporting
-✅ Multi-format export (CSV, XLSX, PDF)
-✅ Stock movement tracking
-✅ Inventory health monitoring
-
-### Potential Future Enhancements
-- User authentication and authorization
-- Multi-warehouse support
-- Batch import/export
-- Real-time notifications
-- Mobile API optimization
-- Advanced forecasting
-- Integration with payment gateways
-- Automated purchase orders
+```bash
+SEED_MONGO_URI="mongodb+srv://..." npm run seed:history
+```
 
 ---
 
-## Acknowledgments
-- Google Gemini API for AI recommendations
-- MongoDB for database
-- Express.js framework
-- Jest testing framework
-- Open-source export libraries (json2csv, ExcelJS, PDFKit)
+## Authentication and roles
+
+Two roles. `owner` holds a wildcard; `employee` holds an explicit allowlist, so
+an endpoint added tomorrow is denied by default rather than accidentally open.
+
+| | Owner | Employee |
+|---|---|---|
+| Products | full | read, **with cost price stripped from the response** |
+| Record a sale | ✓ | ✓ |
+| Receive stock | ✓ | ✗ |
+| Customers | full | read and create |
+| Suppliers | full | ✗ |
+| Stock movements | whole ledger | **only movements they created** |
+| Analytics, reports, exports | full | ✗ — they get `/api/me/summary` |
+| Forecasting, reorder plan, anomalies | full | ✗ |
+| Ask the assistant | all 12 tools | 2 tools |
+| Staff, activity log | full | ✗ |
+| Print a receipt | any sale | their own sales |
+
+Sessions use a short access token held only in JavaScript memory plus a rotating
+`httpOnly` refresh cookie with reuse detection. `AUTHENTICATION.md` explains the
+design and the reasoning behind each choice; `API_REFERENCE.md` documents every
+endpoint.
+
+The detail worth knowing: cost price is protected by a response filter that
+wraps `res.json` and strips financial fields at any depth for roles without
+`finance:read`. Route guards decide which *endpoints* a role may call; they do
+not decide which *fields* come back, and `GET /api/products` is a perfectly
+legitimate employee request that happens to carry the margin on every item.
+
+---
+
+## Testing
+
+```bash
+npm test
+```
+
+| Suite | Covers | Needs a database |
+|---|---|---|
+| `authorization.unit.test.js` | Permission table, `can()`, cost-field filter, token signing | no |
+| `forecasting.unit.test.js` | Series building, Holt-Winters, sMAPE, backtest, reorder maths, anomaly detectors | no |
+| `ai.unit.test.js` | Tool registry, per-role visibility, the permission refusal, briefing fallback, receipts | no |
+| `invoiceMatcher.unit.test.js` | Invoice normalisation, fuzzy matching, the seeded demand generator | no |
+| `auth.test.js` | Login, cookie flags, rotation, reuse detection, revocation | yes |
+| `rbac.test.js` | 401s, 403s, cost stripping, movement scoping, audit entries | yes |
+| `aiFeatures.test.js` | Forecast, reorder, anomalies, briefings, receipts, invoice OCR, cold start | yes |
+| 11 further suites | The original CRUD, analytics and reporting surface | yes |
+
+The database-free suites cover the logic that decides access and computes the
+figures people act on — so a mistake in the permission table or the reorder
+maths fails in under a second, without a database anywhere in the picture.
+
+A few tests are worth reading as documentation:
+
+- `forecasting.unit.test.js` asserts that safety stock scales with `√L`, not `L`.
+  Getting that wrong roughly doubles the capital tied up at a 7-day lead time.
+- `ai.unit.test.js` proves the assistant's permission check runs *before* any
+  database access — the test has no Mongo connection at all, so a refusal that
+  came after the query would hang instead of passing.
+- `invoiceMatcher.unit.test.js` matches against the abbreviations suppliers
+  actually print: `COLGATE T/PASTE 100GM`, `LUX SOAP 75GM`.
+
+---
+
+## Deployment
+
+**Backend → Render.** Push, point a Blueprint at `render.yaml`, and set
+`MONGO_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGIN` and
+optionally `GEMINI_API_KEY` in the dashboard.
+
+**Frontend → Vercel.** Root directory `frontend`. The rewrite in
+`frontend/vercel.json` proxies `/api/*` to the Render service, which is what
+keeps the refresh cookie first-party — check the host there matches your service.
+
+That proxy is not a convenience. Without it the cookie is third-party, Safari
+blocks it outright and Chrome is phasing it out, and sign-in works locally but
+silently fails in production.
+
+**Cron jobs**, if you want them:
+
+```
+0 7 * * 1   npm run briefing      # weekly business briefing
+0 2 * * *   npm run reset:demo    # nightly demo reset (needs DEMO_MODE=true)
+*/10 * * * * curl .../health      # keep a free Render instance awake
+```
+
+That last one matters for a portfolio link: a free instance sleeps after 15
+minutes and the next request can take a minute, which reads as "broken" to
+someone who followed a link from a CV.
+
+---
+
+## Notes on the AI
+
+Every feature goes through one client (`services/ai/client.js`) with a timeout,
+one retry, a response cache, a per-call usage ledger and a monthly spend cap.
+`GET /api/ai/usage` breaks down calls, cache hits, tokens and estimated cost by
+feature.
+
+The division of labour is fixed throughout: **the model writes language, the
+server computes numbers.** The forecast, the reorder quantity, the anomaly
+threshold and every figure in a briefing are calculated in JavaScript. The model
+never sees a query, never chooses a product, and never produces a figure that
+appears in the interface.
+
+Where a model's output is displayed, the numbers it was given are displayed next
+to it — so it can be checked rather than trusted.
+
+---
+
+## Project status
+
+Built in phases; see `AUTHENTICATION.md` and `API_REFERENCE.md` for the detail.
+
+- ✅ Inventory, sales, purchases, suppliers, customers, stock movements
+- ✅ Analytics: P&L, ABC analysis, turnover, dead stock, valuation, supplier performance
+- ✅ Reports with CSV / Excel / PDF export
+- ✅ Authentication and role-based access with an audit trail
+- ✅ Demand forecasting with published out-of-sample accuracy
+- ✅ Safety-stock reorder points
+- ✅ Natural-language assistant, permission-scoped
+- ✅ Anomaly detection and weekly briefings
+- ✅ Invoice scanning, sale receipts

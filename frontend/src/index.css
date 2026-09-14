@@ -776,3 +776,432 @@ button, input, select, textarea {
   flex-wrap: wrap;
   row-gap: 12px;
 }
+/* ─────────────────────────────────────────────────────────────────────────────
+   Authentication
+   ───────────────────────────────────────────────────────────────────────────*/
+
+.auth-splash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background: var(--color-surface);
+}
+
+.login__card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 32px 28px;
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  margin-bottom: 28px;
+}
+
+.login__title {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+.login__subtitle {
+  margin: 0 0 24px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login__form input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+.login__submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.login__demo {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.login__demo p {
+  margin: 0 0 6px;
+}
+
+.login__demo-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 10px !important;
+}
+
+.login__demo code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--color-surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Signed-in identity in the top bar */
+
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.topbar__user-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.role-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+
+.role-pill--owner {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.role-pill--employee {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+@media (max-width: 640px) {
+  .topbar__user-name {
+    display: none;
+  }
+}
+
+.forbidden {
+  max-width: 52ch;
+}
+
+.success-banner {
+  margin-bottom: 16px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Intelligence pages — Ask, Forecast, Reorder, Anomalies, Briefings
+   ───────────────────────────────────────────────────────────────────────────*/
+
+.page-toolbar__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar__controls select {
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.chart-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+/* ── Ask ──────────────────────────────────────────────────────────────────── */
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ask__intro p {
+  margin: 0 0 14px;
+  max-width: 62ch;
+  color: var(--color-muted);
+}
+
+.ask__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ask__suggestion {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ask__suggestion:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.ask__exchange {
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}
+
+.ask__question {
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.ask__answer {
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 12px 14px;
+}
+
+.ask__answer--refused {
+  border-left-color: var(--color-warning);
+}
+
+.ask__answer p {
+  margin: 0;
+}
+
+.ask__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-border);
+}
+
+.ask__tools-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.ask__tool {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  color: var(--color-muted);
+}
+
+.ask__tool--refused {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.ask__form {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}
+
+.ask__form input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+/* ── Anomalies ────────────────────────────────────────────────────────────── */
+
+.anomaly-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.anomaly {
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+
+.anomaly__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.anomaly__type {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.anomaly__facts {
+  margin: 0;
+}
+
+.anomaly__narrative {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-border);
+  font-size: 13.5px;
+  color: var(--color-muted);
+}
+
+.anomaly__narrative p {
+  margin: 0 0 6px;
+}
+
+.anomaly__check {
+  margin-bottom: 0 !important;
+}
+
+/* ── Briefings ────────────────────────────────────────────────────────────── */
+
+.briefing__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.briefing__subhead {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin: 18px 0 8px;
+}
+
+.briefing__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.briefing__metrics strong {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Scan invoice ─────────────────────────────────────────────────────────── */
+
+.scan__upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.scan__preview {
+  margin-top: 16px;
+  max-width: 320px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.scan__preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.scan__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 14px 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.scan__source {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-ink);
+}
+
+.scan__number {
+  width: 84px;
+  padding: 5px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-ink);
+  text-align: right;
+}
+
+.scan__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}

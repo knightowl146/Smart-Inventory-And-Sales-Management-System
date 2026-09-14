@@ -1,4 +1,4 @@
-const request = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
@@ -14,6 +14,7 @@ beforeAll(async () => {
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const uri = mongoServer.getUri();
   await mongoose.connect(uri);
+  await seedTestUsers();
 
   // Create a shared test supplier for purchase tests
   const supplierRes = await request(app).post("/api/suppliers").send({
@@ -183,7 +184,7 @@ describe("POST & PUT /api/products/:id/purchase — Purchase (Add Stock)", () =>
 
   it("200: adds stock successfully via PUT", async () => {
     const res = await request(app)
-      .put(`/products/${createdProductId}/purchase`)
+      .put(`/api/products/${createdProductId}/purchase`)
       .send({ quantity: 10, unitPrice: 20, supplierId: testSupplierId });
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);

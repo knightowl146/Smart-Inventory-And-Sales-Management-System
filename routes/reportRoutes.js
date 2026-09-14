@@ -1,5 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const { requireAuth } = require("../middlewares/auth");
+const { can } = require("../middlewares/permissions");
+
 
 const {
   getSalesReport,
@@ -15,6 +18,16 @@ const {
 } = require("../controllers/reportController");
 
 // Sales Report
+/**
+ * Owner-only, including the CSV/Excel/PDF exports.
+ *
+ * The exports matter more than they look: they stream a file straight from the
+ * documents, so they never pass through res.json and the response filter that
+ * strips cost fields cannot touch them. Locking the whole router down is what
+ * keeps that from being a hole.
+ */
+router.use(requireAuth, can("report:read"));
+
 router.get("/sales", getSalesReport);
 router.get("/sales/export", exportSalesReport);
 

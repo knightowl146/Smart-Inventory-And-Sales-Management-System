@@ -4,7 +4,7 @@ const Supplier = require("../models/Supplier");
 //<----------CREATE SUPPLIER------------>
 const createSupplier = async (req, res) => {
     try {
-        const { name, email, phone, address } = req.body;
+        const { name, email, phone, address, leadTimeDays } = req.body;
 
         if (!name) {
             return res.status(400).json({
@@ -17,7 +17,10 @@ const createSupplier = async (req, res) => {
             name,
             email,
             phone,
-            address
+            address,
+            // Left undefined when not supplied, so the schema default applies
+            // rather than writing an explicit null the maths would trip over.
+            ...(leadTimeDays !== undefined && { leadTimeDays })
         });
 
         return res.status(201).json({
@@ -109,7 +112,7 @@ const updateSupplier = async (req, res) => {
             });
         }
 
-        const { name, email, phone, address } = req.body;
+        const { name, email, phone, address, leadTimeDays } = req.body;
 
         const supplier = await Supplier.findByIdAndUpdate(
             supplierId,
@@ -117,7 +120,8 @@ const updateSupplier = async (req, res) => {
                 name,
                 email,
                 phone,
-                address
+                address,
+                ...(leadTimeDays !== undefined && { leadTimeDays })
             },
             {
                 returnDocument: 'after',

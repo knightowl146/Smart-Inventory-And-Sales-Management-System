@@ -16,7 +16,7 @@
  *  - Data integrity
  */
 
-const request = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 
@@ -39,6 +39,7 @@ beforeAll(async () => {
 
   const uri = mongoServer.getUri();
   await mongoose.connect(uri);
+  await seedTestUsers();
 });
 
 afterAll(async () => {

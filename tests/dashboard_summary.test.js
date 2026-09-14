@@ -35,7 +35,7 @@
  * Uses MongoMemoryReplSet so that transactions inside sellProduct work.
  */
 
-const request   = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose  = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app       = require("../app");
@@ -49,6 +49,7 @@ let testCustomerId;
 beforeAll(async () => {
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
+  await seedTestUsers();
 
   // Customer
   const custRes = await request(app).post("/api/customers").send({

@@ -3,6 +3,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "//": "CHECK THIS URL. It must be your Render service's public URL. Taken from render.yaml's service name (smart-inventory-api); if your Render dashboard shows a different host, change it here or sign-in will 404 in production.",
+      "source": "/api/:path*",
+      "destination": "https://smart-inventory-api.onrender.com/api/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

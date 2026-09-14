@@ -48,6 +48,22 @@ const stockMovementsSchema = new mongoose.Schema(
         newQuantity:{
             type: Number,
             required: true
+        },
+
+        /**
+         * Who recorded this movement.
+         *
+         * Nullable on purpose: rows created by the seed scripts before
+         * authentication existed have no actor, and making this required would
+         * have meant a data migration to add the feature. New movements always
+         * carry it, which is what lets an employee be scoped to their own
+         * ledger and what the planned anomaly detection keys off.
+         */
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+            index: true
         }
     },
     {

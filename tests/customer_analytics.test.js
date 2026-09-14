@@ -10,7 +10,7 @@
  * inside the sellProduct endpoint (which is used to seed SALE movements).
  */
 
-const request = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
@@ -25,6 +25,7 @@ beforeAll(async () => {
   // Replica set required for transactions used inside sellProduct
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
+  await seedTestUsers();
 
   // ── Create a product with enough stock ───────────────────────────────────
   const pRes = await request(app).post("/api/products").send({

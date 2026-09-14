@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getMovements } from "../api/movements";
 import { getCustomers } from "../api/customers";
 import { getSuppliers } from "../api/suppliers";
+import ReceiptButton from "../components/ReceiptButton";
 import DataTable from "../components/DataTable";
 import Pagination from "../components/Pagination";
 
@@ -83,6 +84,13 @@ const Movements = () => {
         },
       },
       { key: "createdAt", header: "Date", render: (row) => new Date(row.createdAt).toLocaleString() },
+      {
+        key: "receipt",
+        header: "",
+        // Sales only - there is no such thing as a receipt for stock coming in.
+        render: (row) =>
+          row.type === "SALE" ? <ReceiptButton movementId={row._id} /> : null,
+      },
     ],
     [customerMap, supplierMap]
   );

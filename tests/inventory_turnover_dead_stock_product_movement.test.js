@@ -7,7 +7,7 @@
  * Uses MongoMemoryServer + supertest so no real DB is needed.
  */
 
-const request = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
@@ -22,6 +22,7 @@ let productAlphaId, productBetaId, productGammaId;
 beforeAll(async () => {
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
+  await seedTestUsers();
 
   // Create a supplier (required for PURCHASE movements)
   const supplierRes = await request(app).post("/api/suppliers").send({

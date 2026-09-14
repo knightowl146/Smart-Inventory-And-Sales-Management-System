@@ -1,4 +1,5 @@
 import { useLocation } from "react-router-dom";
+import { useAuth } from "../context/authContext";
 
 const titleMap = {
   "/": "Dashboard",
@@ -12,11 +13,24 @@ const titleMap = {
   "/analytics": "Analytics",
   "/recommendations": "AI Recommendations",
   "/reports": "Reports",
+  "/staff": "Staff",
+  "/activity": "Activity Log",
+  "/ask": "Ask Your Inventory",
+  "/forecast": "Demand Forecast",
+  "/reorder-plan": "Reorder Plan",
+  "/anomalies": "Anomaly Watch",
+  "/briefings": "Business Briefings",
+  "/scan-invoice": "Scan Invoice",
 };
 
 const Topbar = ({ onMenuClick }) => {
   const location = useLocation();
-  const title = titleMap[location.pathname] || "Smart Inventory";
+  const { user, signOut } = useAuth();
+
+  const title =
+    location.pathname === "/" && user?.role === "employee"
+      ? "My Day"
+      : titleMap[location.pathname] || "Smart Inventory";
 
   return (
     <header className="topbar">
@@ -32,6 +46,16 @@ const Topbar = ({ onMenuClick }) => {
           </svg>
         </button>
         <h1 className="topbar__title">{title}</h1>
+
+        {user && (
+          <div className="topbar__user">
+            <span className="topbar__user-name">{user.name}</span>
+            <span className={`role-pill role-pill--${user.role}`}>{user.role}</span>
+            <button type="button" className="btn btn--secondary" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

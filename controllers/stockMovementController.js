@@ -1,5 +1,19 @@
 const mongoose = require("mongoose");
 const StockMovement = require("../models/StockMovements");
+const { roleHas } = require("../middlewares/permissions");
+
+/**
+ * An employee may only see movements they recorded themselves. Applying that as
+ * a query condition rather than filtering the response means the other rows are
+ * never read out of the database at all, and pagination counts stay honest -
+ * filtering afterwards would report a total the caller cannot actually page to.
+ */
+const scopeToActor = (filter, user) => {
+  if (!roleHas(user.role, "movement:read")) {
+    filter.createdBy = user.id;
+  }
+  return filter;
+};
 
 //----------All product movements----------//
 const getMovements = async (req, res) => {
@@ -30,7 +44,7 @@ const getMovements = async (req, res) => {
         message: "Type must be either PURCHASE or SALE",
       });
     }
-    const filter = {};
+    const filter = scopeToActor({}, req.user);
 
     if (type) {
       filter.type = type;
@@ -98,9 +112,8 @@ const productMovements = async (req, res) => {
       });
     }
 
-    const filter = {
-      product: id,
-    };
+    const filter = scopeToActor({ product: id }, req.user);
+
     if (type) {
       filter.type = type;
     }

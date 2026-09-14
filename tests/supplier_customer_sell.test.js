@@ -17,7 +17,7 @@
  * as such in comments.
  */
 
-const request  = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app      = require("../app");
@@ -33,6 +33,7 @@ beforeAll(async () => {
   // Use a replica set so MongoDB transactions work (required by sellProduct)
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
+  await seedTestUsers();
 
   // ── Suppliers ──────────────────────────────────────────────────────────────
   const sA = await request(app).post("/api/suppliers").send({

@@ -17,7 +17,62 @@ Complete API documentation for all endpoints.
 
 ## Authentication
 
-Currently, the API does not require authentication. All endpoints are publicly accessible.
+**Every endpoint except `GET /health` requires a valid access token.**
+
+Send it as a bearer token:
+
+```
+Authorization: Bearer <accessToken>
+```
+
+Tokens come from `POST /api/auth/login`. The access token is short-lived (15
+minutes) and is returned in the response body; the refresh token is set as an
+httpOnly cookie scoped to `/api/auth` and is never readable by JavaScript.
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /api/auth/login` | none | `{ email, password }` -> `{ accessToken, user }` + refresh cookie |
+| `POST /api/auth/refresh` | refresh cookie | Rotates the refresh token, returns a new access token |
+| `POST /api/auth/logout` | refresh cookie | Revokes that one session |
+| `POST /api/auth/logout-all` | bearer | Revokes every session for the caller |
+| `GET /api/auth/me` | bearer | The signed-in user |
+| `POST /api/auth/change-password` | bearer | `{ currentPassword, newPassword }`; signs out other devices |
+
+Refresh tokens rotate on every use and carry reuse detection: presenting a
+token that has already been rotated revokes every session for that user.
+
+### Roles
+
+Two roles. `owner` holds every permission; `employee` holds an explicit
+allowlist and is denied anything not on it.
+
+| Area | Owner | Employee |
+|---|---|---|
+| Products | full | read only, with `purchasePrice` removed from the response |
+| Sell (`POST /api/products/:id/sell`) | yes | yes |
+| Purchase (`POST /api/products/:id/purchase`) | yes | 403 |
+| Customers | full | read and create |
+| Suppliers | full | 403 |
+| `/api/movements` | whole ledger | only movements they created |
+| `/api/analytics/*` | full | 403 - use `GET /api/me/summary` |
+| `/api/reports/*` (incl. exports) | full | 403 |
+| `/api/dashboard/stats` | yes | 403 - use `GET /api/me/summary` |
+| `/api/users/*` | full | 403 |
+| `/api/audit` | full | 403 |
+
+Failures are distinguishable: **401** means the token is missing, malformed,
+expired or revoked; **403** means the token is valid but the role does not hold
+the permission.
+
+Cost and margin fields (`purchasePrice`, `profit`, `totalCost`, `margin`,
+`inventoryValue`, and similar) are stripped from every JSON response for any
+role without `finance:read`, at any nesting depth.
+
+### Endpoints that no longer exist
+
+The bare-path duplicates (`/products`, `/movements`, `/analytics/*`,
+`/reports/*`, `/customers`, `/dashboard/*`) have been removed. Every router is
+mounted once, under `/api`.
 
 ---
 
@@ -974,3 +1029,142 @@ For API issues or questions:
 1. Check this documentation
 2. Review test files for usage examples
 3. Create an issue in the repository
+
+
+---
+
+## Forecasting and reorder (Phase 3)
+
+All owner-only.
+
+### Product forecast
+**Endpoint:** `GET /api/analytics/forecast/:productId?horizon=30&lookback=180`
+
+Returns a daily demand forecast with an 80% prediction interval, a backtest
+score, a reorder policy, and the recent history the forecast was fitted from.
+
+The method is chosen by how much history the SKU has: under 14 days it is an
+honest average, 14-41 days a damped trend, 42 days or more Holt-Winters with
+weekly seasonality. `forecast.warning` says so when the data is thin.
+
+`accuracy` is `null` when there is not enough history to score a forecast
+honestly, rather than reporting an invented number.
+
+### Reorder plan
+**Endpoint:** `GET /api/analytics/reorder-plan?serviceLevel=0.95&lookback=180`
+
+Every product ranked by urgency, with suggested order quantities and estimated
+cost. Reorder point is `mean daily demand x lead time + z x sigma x sqrt(lead
+time)` - the safety stock scales with demand *variability*, so a volatile
+product gets a bigger buffer than a steady one selling the same volume.
+
+`serviceLevel` accepts 0.9, 0.95, 0.98 or 0.99.
+
+### Forecast accuracy
+**Endpoint:** `GET /api/analytics/forecast-accuracy`
+
+Out-of-sample error across the catalogue: the last 30 days are held out, the
+model forecasts them from the rest, and the result is scored against a naive
+and a seasonal-naive baseline. `beatsBaselinePercent` is the honest headline.
+
+---
+
+## Anomaly watch (Phase 5)
+
+**Endpoint:** `GET /api/analytics/anomalies?days=60&explain=true` — owner only
+
+Three families of finding: unusual daily volume per product, sales recorded
+below the list price, and staff accounts out of line with their peers. Outliers
+are found with median/MAD rather than mean/standard deviation, because the
+outlier being looked for distorts a mean-based yardstick into missing it.
+
+`explain=false` skips the AI commentary. Findings always carry their numbers;
+`narrative` is `null` when the model is unavailable.
+
+---
+
+## Assistant (Phase 4)
+
+### Ask
+**Endpoint:** `POST /api/ai/ask` — both roles
+
+```json
+{ "question": "Which products made the most profit last month?" }
+```
+
+The model selects from a fixed registry of read-only tools and fills in typed
+parameters; the server executes them. It never writes a query.
+
+Each tool carries a permission, checked against the **caller's** role before the
+handler runs, using the same table as the HTTP routes. An employee asking about
+margin is refused by the authorisation layer, not by a prompt instruction - and
+the finance tools are never offered to them in the first place. The response
+lists `toolCalls` so the answer can be checked against the lookups behind it.
+
+Rate limited to 10 per minute per user. Returns `assistantAvailable: false`
+rather than an error when no API key is configured.
+
+### Status and usage
+- `GET /api/ai/status` — whether AI is configured, the monthly cap, spend so far
+- `GET /api/ai/usage` — 30-day breakdown by feature: calls, cache hits, failures, tokens, estimated cost, latency
+
+### Briefings
+- `GET /api/ai/briefings?limit=10` — stored weekly briefings, newest first
+- `POST /api/ai/briefings` — generate one now (`{ "days": 7 }`)
+
+Each briefing stores the figures it was written from, so the prose can be
+checked against the arithmetic. `source` is `ai` or `deterministic`.
+
+Also runnable headlessly for a cron schedule: `npm run briefing`.
+
+---
+
+## Receipts
+
+**Endpoint:** `GET /api/movements/:id/receipt` — both roles
+
+Returns `application/pdf`, sized for an 80mm thermal roll.
+
+An employee may only print receipts for sales they recorded; another person's
+sale returns **404**, not 403, so the ledger cannot be enumerated by id.
+
+The receipt never renders a cost price or a margin. The response filter that
+strips those elsewhere only wraps `res.json`, and a PDF stream bypasses it - so
+the guarantee is built into what the renderer is given rather than relied on
+downstream.
+
+
+---
+
+## Invoice scanning (Phase 6)
+
+**Endpoint:** `POST /api/ai/invoice/extract` — owner only, `multipart/form-data`
+
+Field `invoice`: a JPEG, PNG or WebP image, 8MB maximum. Held in memory and
+passed straight to the model; never written to disk.
+
+Gemini 2.5 Flash reads the page against a fixed schema and returns line items
+exactly as printed — descriptions are *not* tidied, because the supplier's own
+abbreviation is what makes matching work. The server then fuzzy-matches each
+line to the catalogue (`services/ai/invoiceMatcher.js`), which is deliberately
+not the model's job: a wrong match should be a bug with a stack trace, not a
+hallucination nobody can debug.
+
+Each line returns a status:
+
+| Status | Meaning |
+|---|---|
+| `matched` | Confident and unambiguous — preselected, still confirmed by a human |
+| `uncertain` | A suggestion, with alternatives |
+| `unmatched` | Nothing close; the owner picks or skips |
+
+A high score is not enough for `matched` — the runner-up must also be clearly
+behind. Two products scoring alike means the line is genuinely ambiguous, and
+preselecting either would be a coin flip presented as a decision.
+
+**This endpoint never writes stock.** `committed` is always `false`. The client
+posts confirmed lines to the existing `POST /api/products/:id/purchase`.
+
+Responses: **422** when the image cannot be read (blurry, cropped, not an
+invoice), **503** when no API key is configured, **415** for a non-image,
+**413** over 8MB, rate limited to 20 per hour per user.

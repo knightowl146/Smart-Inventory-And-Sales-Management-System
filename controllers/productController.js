@@ -3,6 +3,7 @@ const Product = require("../models/Product");
 const StockMovement = require("../models/StockMovements");
 const Supplier = require("../models/Supplier");
 const Customer = require("../models/Customer");
+const audit = require("../services/auditService");
 
 // Escapes regex metacharacters in user-supplied search text before it's used
 // to build a MongoDB $regex filter, so a crafted search string can't be used
@@ -399,6 +400,7 @@ const purchaseProduct = async (req, res) => {
           quantity: quantity,
           unitPrice: unitPrice,
           supplier: supplier._id,
+          createdBy: req.user.id,
           prevQuantity: prevQuantity,
           newQuantity: newQuantity,
           // Only present when the caller backdated the movement.
@@ -416,6 +418,13 @@ const purchaseProduct = async (req, res) => {
     );
 
     await session.commitTransaction();
+
+    audit.record({
+      action: "stock.purchase",
+      entityType: "Product",
+      entityId: product._id,
+      after: { quantity, unitPrice, supplier: supplier._id, newQuantity },
+    });
 
     return res.status(200).json({
       success: true,
@@ -566,6 +575,7 @@ const sellProduct = async (req, res) => {
           quantity: quantity,
           unitPrice: unitPrice,
           customer: customer._id,
+          createdBy: req.user.id,
           prevQuantity: prevQuantity,
           newQuantity: newQuantity,
           // Only present when the caller backdated the movement.
@@ -581,6 +591,13 @@ const sellProduct = async (req, res) => {
     );
 
     await session.commitTransaction();
+
+    audit.record({
+      action: "stock.sale",
+      entityType: "Product",
+      entityId: product._id,
+      after: { quantity, unitPrice, customer: customer._id, newQuantity },
+    });
 
     return res.status(200).json({
       success: true,

@@ -1,5 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const { requireAuth } = require("../middlewares/auth");
+const { can } = require("../middlewares/permissions");
+
 
 const {
     getSalesAnalytics,
@@ -28,6 +31,23 @@ const {
     getDashboardSummary,
     getSingleProductRecommendation
 } = require("../controllers/analyticsController");
+
+const {
+    getProductForecast,
+    getReorderPlan,
+    getForecastAccuracy
+} = require("../controllers/forecastController");
+
+const { getAnomalies } = require("../controllers/anomalyController");
+
+/**
+ * The whole analytics tree is owner-only: every endpoint below either reports
+ * money (revenue, profit, valuation, supplier cost) or is derived from it.
+ * Employees get the purpose-built /api/me/summary instead - see
+ * controllers/meController.js for why that is a separate endpoint rather than a
+ * filtered view of these.
+ */
+router.use(requireAuth, can("analytics:read"));
 
 router.get("/sales", getSalesAnalytics);
 router.get("/purchases", getPurchaseAnalytics);
@@ -63,6 +83,17 @@ router.get("/inventory/abc-analysis",getABCInventoryAnalysis);
 router.get("/inventory/stock-recommendations", getStockRecommendationMetrics);
 router.get("/inventory/stock-recommendations/:productId", getSingleProductRecommendation);
 router.get("/dashboard/summary", getDashboardSummary);
+
+// ── Forecasting and reorder science (Phase 3) ────────────────────────────────
+// Declared before /products/:productId would ever be reached for these paths;
+// Express matches in registration order and "forecast" is a literal segment, so
+// there is no ambiguity with the :productId parameter above.
+router.get("/forecast-accuracy", getForecastAccuracy);
+router.get("/forecast/:productId", getProductForecast);
+router.get("/reorder-plan", getReorderPlan);
+
+// ── Anomaly watch (Phase 5) ──────────────────────────────────────────────────
+router.get("/anomalies", getAnomalies);
 
 
 module.exports = router;

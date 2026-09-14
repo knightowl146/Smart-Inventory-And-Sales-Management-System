@@ -1,4 +1,4 @@
-const request = require("supertest");
+const { request, seedTestUsers } = require("./helpers/testClient");
 const mongoose = require("mongoose");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const app = require("../app");
@@ -11,6 +11,7 @@ let createdSupplierId;
 beforeAll(async () => {
   mongoServer = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(mongoServer.getUri());
+  await seedTestUsers();
 });
 
 afterAll(async () => {
