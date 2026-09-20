@@ -19,7 +19,19 @@ services:
     # delay on the next request) - fine for trying this out. Switch to
     # "starter" or higher once you want it always-on.
     plan: free
-    buildCommand: npm ci
+    # --omit=dev because the server runs `node server.js` and has no use for
+    # jest, supertest or mongodb-memory-server - the last of which downloads a
+    # mongod binary on install. Skipping them is most of the build time on a
+    # free instance.
+    #
+    # Note this does NOT relax `npm ci`'s lock-file check: npm validates the
+    # whole dependency tree before deciding what to install, so a lock file out
+    # of sync in a dev-only subtree still fails the build. If it does,
+    # regenerate package-lock.json and commit it - on Linux if you can, because
+    # optional platform binaries (unrs-resolver's bindings, @emnapi under them)
+    # resolve differently on Windows and a Windows-written lock can be rejected
+    # here while being perfectly valid where it was made.
+    buildCommand: npm ci --omit=dev
     startCommand: node server.js
     healthCheckPath: /health
     autoDeploy: true
