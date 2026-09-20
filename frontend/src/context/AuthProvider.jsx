@@ -8,6 +8,14 @@ import * as authApi from "../api/auth";
 import { AuthContext } from "./authContext";
 
 /**
+ * How many times the boot-time refresh may be retried before giving up and
+ * showing the login screen. Three attempts spread over about twelve seconds
+ * covers a cold start on a sleeping free instance without leaving someone
+ * staring at a spinner if the server is genuinely down.
+ */
+const BOOT_RETRIES = 3;
+
+/**
  * Client-side view of who is signed in.
  *
  * Everything here is presentation. The server decides what a role may do on
@@ -35,22 +43,55 @@ export const AuthProvider = ({ children }) => {
    * the httpOnly refresh cookie may still be valid - so try to exchange it
    * before deciding the visitor is anonymous. This is what makes a page reload
    * keep you signed in.
+   *
+   * The retry matters more than it looks. Treating every failure as "not signed
+   * in" conflates two very different things: the server saying no, and the
+   * server not answering. On a free hosting tier the instance sleeps after a
+   * quarter of an hour, and the first request to wake it takes the better part
+   * of a minute - long enough for the proxy in front to give up and return a
+   * gateway error. Reloading the page would then dump a perfectly valid session
+   * at the login screen, and the user would sign in again, which works, because
+   * by then the server is awake. That is the bug reported as "it logs me out on
+   * refresh".
+   *
+   * So: only a 401 or 403 means anonymous. Anything else - no response, a
+   * timeout, a 5xx - is treated as "ask again shortly".
    */
   useEffect(() => {
     let cancelled = false;
+    let timer = null;
 
-    refreshAccessToken()
-      .then((data) => {
-        if (cancelled) return;
-        setUser(data?.user ?? null);
-        setStatus(data?.user ? "authenticated" : "anonymous");
-      })
-      .catch(() => {
-        if (!cancelled) clearSession();
-      });
+    const statusOf = (error) => error?.status ?? error?.response?.status ?? 0;
+
+    const attempt = (remaining) => {
+      refreshAccessToken()
+        .then((data) => {
+          if (cancelled) return;
+          setUser(data?.user ?? null);
+          setStatus(data?.user ? "authenticated" : "anonymous");
+        })
+        .catch((error) => {
+          if (cancelled) return;
+
+          const code = statusOf(error);
+          const serverSaidNo = code === 401 || code === 403;
+
+          if (serverSaidNo || remaining === 0) {
+            clearSession();
+            return;
+          }
+
+          // Backs off, because a waking instance needs seconds, not
+          // milliseconds, and hammering it does not make it faster.
+          timer = setTimeout(() => attempt(remaining - 1), (BOOT_RETRIES - remaining + 1) * 2000);
+        });
+    };
+
+    attempt(BOOT_RETRIES);
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [clearSession]);
 
