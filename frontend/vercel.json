@@ -4,7 +4,6 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "//": "The live Render service. Render appends random characters when a service name is already taken globally, so this is NOT simply render.yaml's service name - copy it from the Render dashboard. Verify with <host>/health, which should answer {status:ok,db:connected}. Proxying rather than calling the backend cross-origin is what keeps the refresh cookie first-party: same origin, SameSite=Lax, no third-party cookie blocking.",
       "source": "/api/:path*",
       "destination": "https://smart-inventory-api-n0cd.onrender.com/api/:path*"
     },
