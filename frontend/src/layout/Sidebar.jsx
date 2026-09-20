@@ -45,7 +45,6 @@ const navSections = [
     title: "Insights",
     links: [
       { to: "/analytics", label: "Analytics", roles: ["owner"] },
-      { to: "/recommendations", label: "AI Recommendations", roles: ["owner"] },
       { to: "/reports", label: "Reports", roles: ["owner"] },
     ],
   },

@@ -11,7 +11,6 @@ const titleMap = {
   "/inventory": "Inventory",
   "/movements": "Stock Movements",
   "/analytics": "Analytics",
-  "/recommendations": "AI Recommendations",
   "/reports": "Reports",
   "/staff": "Staff",
   "/activity": "Activity Log",

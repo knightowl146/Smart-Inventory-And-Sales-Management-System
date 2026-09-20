@@ -40,7 +40,3 @@ export const getCustomerPurchaseHistory = (customerId, params) =>
   get(`/customer/${customerId}/purchase-history`, params);
 export const getCustomerSpendingOverTime = (customerId, params) =>
   get(`/customer/${customerId}/spending-over-time`, params);
-
-export const getStockRecommendations = (params) => get("/inventory/stock-recommendations", params);
-export const getSingleProductRecommendation = (productId, params) =>
-  get(`/inventory/stock-recommendations/${productId}`, params);

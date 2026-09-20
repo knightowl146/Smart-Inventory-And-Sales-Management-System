@@ -16,7 +16,6 @@ import Purchases from "./pages/Purchases";
 import Inventory from "./pages/Inventory";
 import Movements from "./pages/Movements";
 import Analytics from "./pages/Analytics";
-import Recommendations from "./pages/Recommendations";
 import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import ActivityLog from "./pages/ActivityLog";
@@ -69,7 +68,6 @@ function App() {
               <Route path="purchases" element={owner(<Purchases />)} />
               <Route path="inventory" element={owner(<Inventory />)} />
               <Route path="analytics" element={owner(<Analytics />)} />
-              <Route path="recommendations" element={owner(<Recommendations />)} />
               <Route path="reports" element={owner(<Reports />)} />
               <Route path="staff" element={owner(<Staff />)} />
               <Route path="activity" element={owner(<ActivityLog />)} />
