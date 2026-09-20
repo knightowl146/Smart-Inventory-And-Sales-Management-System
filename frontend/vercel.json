@@ -4,9 +4,9 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "//": "CHECK THIS URL. It must be your Render service's public URL. Taken from render.yaml's service name (smart-inventory-api); if your Render dashboard shows a different host, change it here or sign-in will 404 in production.",
+      "//": "The live Render service. Render appends random characters when a service name is already taken globally, so this is NOT simply render.yaml's service name - copy it from the Render dashboard. Verify with <host>/health, which should answer {status:ok,db:connected}. Proxying rather than calling the backend cross-origin is what keeps the refresh cookie first-party: same origin, SameSite=Lax, no third-party cookie blocking.",
       "source": "/api/:path*",
-      "destination": "https://smart-inventory-api.onrender.com/api/:path*"
+      "destination": "https://smart-inventory-api-n0cd.onrender.com/api/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
