@@ -24,11 +24,21 @@ anything cost.
 Beyond the CRUD, four things are worth a closer look:
 
 **Demand forecasting that admits when it is wrong.** Holt-Winters with weekly
-seasonality, but the method is chosen by how much history a product actually
-has — under 14 days it returns an honest average rather than fitting a seasonal
-curve to noise. Accuracy is measured by holding out the last 30 days and scoring
-against two free baselines, and the app displays that figure, including when the
-baseline wins.
+seasonality, but the method is chosen by the shape of the demand rather than
+always reaching for the fanciest one: under 14 days of history it returns an
+honest average instead of fitting a seasonal curve to noise, and a product that
+sells on one day in five — a laptop, a television — goes to Croston's method
+with the Syntetos-Boylan correction, because there is no weekly pattern in a
+series that is mostly gaps. One-off bulk orders are capped before fitting, so a
+school buying forty cables does not become next month's forecast. Accuracy is
+measured by holding out the last 30 days and scoring against two free
+baselines, and the app displays that figure, including when the baseline wins.
+
+Intermittent products are scored on the total over the window rather than on
+daily error, and the app says so. That is not a softer test: mean absolute
+error is minimised by the median, which is zero when most days are zero, so on
+daily error *no* forecast can beat predicting nothing — and a shop that follows
+that forecast never reorders the laptop.
 
 **Reorder points from inventory theory, not a rule of thumb.**
 `reorder point = μ·L + z·σ·√L` — lead-time demand plus a buffer sized to how
@@ -111,7 +121,7 @@ cp .env.example .env          # then fill it in, see below
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 # run twice → JWT_ACCESS_SECRET and JWT_REFRESH_SECRET
 
-npm run seed                  # catalogue
+npm run seed                  # electronics catalogue (wipes products + movements)
 npm run seed:owner            # the first owner account
 npm run seed:history          # 180 days of trading history
 npm run dev                   # :3000
@@ -147,7 +157,8 @@ Staff page.
 |---|---|
 | `npm run dev` | Backend with nodemon |
 | `npm test` | The full suite |
-| `npm run seed` | Product catalogue |
+| `npm run seed` | Electronics catalogue — 76 products, 12 categories. Deletes existing products and movements first, and asks before it does |
+| `npm run seed:grocery` | The original grocery catalogue, if you want it back |
 | `npm run seed:owner` | First owner account |
 | `npm run seed:history` | Backdated trading history — `-- --days=365`, `-- --fresh` |
 | `npm run briefing` | Generate a weekly briefing (for cron) |

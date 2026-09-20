@@ -34,6 +34,24 @@ const URGENCY_BADGE = {
 };
 
 /**
+ * Method names, in words.
+ *
+ * "croston" on screen is a shibboleth - it means something to whoever wrote the
+ * forecaster and nothing to the shopkeeper reading the page. The name is kept
+ * alongside the explanation rather than replaced by it, so the page stays
+ * honest about what it actually ran.
+ */
+const METHOD_LABELS = {
+  "holt-winters": "Holt-Winters — level, trend and a weekly pattern",
+  croston: "Croston (Syntetos-Boylan) — for products that sell irregularly",
+  "damped-trend": "Damped trend — not enough history for a weekly pattern",
+  mean: "Average — too little history for anything else",
+  none: "None — no sales to forecast from",
+};
+
+const describeMethod = (method) => METHOD_LABELS[method] ?? method;
+
+/**
  * Demand forecast for one product.
  *
  * The chart deliberately puts actual history and the forecast on one axis, with
@@ -150,6 +168,45 @@ const Forecast = () => {
               tone={accuracy.beatsBaselinePercent >= 50 ? undefined : "warning"}
             />
           </div>
+
+          {/*
+            The headline percentage averages two different questions together.
+            Smooth demand is judged day by day; irregular demand is judged on
+            the month's total, because mean absolute error is minimised by
+            predicting zero when most days are zero - so on that measure no
+            forecast can beat doing nothing. Splitting the table says which
+            test each product actually faced.
+          */}
+          {accuracy.byMethod?.length > 1 && (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Products</th>
+                    <th>Judged on</th>
+                    <th>Model wins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accuracy.byMethod.map((row) => (
+                    <tr key={row.method}>
+                      <td>{describeMethod(row.method)}</td>
+                      <td>{row.evaluated}</td>
+                      <td>
+                        {row.criterion === "total-over-window"
+                          ? "total over the window"
+                          : "error per day"}
+                      </td>
+                      <td>
+                        {row.wins} of {row.evaluated} ({row.winPercent}%)
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -230,7 +287,7 @@ const Forecast = () => {
                 <tbody>
                   <tr>
                     <td>Method</td>
-                    <td>{data.forecast.method}</td>
+                    <td>{describeMethod(data.forecast.method)}</td>
                   </tr>
                   <tr>
                     <td>Days of history used</td>
@@ -265,7 +322,20 @@ const Forecast = () => {
                     <td>Suggested order quantity</td>
                     <td>{data.reorder.suggestedQuantity}</td>
                   </tr>
-                  {data.accuracy && (
+                  {data.accuracy && data.accuracy.criterion === "total-over-window" && (
+                    <tr>
+                      <td>This product&apos;s backtest error</td>
+                      <td>
+                        Predicted {data.accuracy.cumulative.model} units over the last{" "}
+                        {data.accuracy.holdoutDays} days; {data.accuracy.cumulative.actual} actually
+                        sold. Judged on the total rather than day by day, because this product sells
+                        too irregularly for daily accuracy to mean anything
+                        {data.accuracy.beatsBaseline ? " — model wins" : " — baseline wins"}
+                      </td>
+                    </tr>
+                  )}
+
+                  {data.accuracy && data.accuracy.criterion !== "total-over-window" && (
                     <tr>
                       <td>This product&apos;s backtest error</td>
                       <td>

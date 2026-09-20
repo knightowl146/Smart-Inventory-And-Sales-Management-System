@@ -873,6 +873,49 @@ button, input, select, textarea {
   border-radius: 3px;
 }
 
+.login__demo-buttons {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 12px;
+}
+
+.login__demo-buttons .btn {
+  flex: 1;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.login__demo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.login__demo-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.login__demo-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  min-width: 62px;
+}
+
+@media (max-width: 420px) {
+  .login__demo-buttons {
+    flex-direction: column;
+  }
+}
+
 /* Signed-in identity in the top bar */
 
 .topbar__user {

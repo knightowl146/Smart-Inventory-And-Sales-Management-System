@@ -249,6 +249,28 @@ const getForecastAccuracy = async (req, res, next) => {
         beatsBaselinePercent: Number(
           ((scored.filter((row) => row.beatsBaseline).length / scored.length) * 100).toFixed(1)
         ),
+
+        /**
+         * The same verdict split by method, because one headline percentage
+         * hides the interesting part: smooth demand and intermittent demand
+         * are forecast by different methods and scored on different criteria,
+         * and averaging them together says less than either number alone.
+         */
+        byMethod: Object.entries(
+          scored.reduce((groups, row) => {
+            const group = groups[row.method] ?? { evaluated: 0, wins: 0, criterion: row.criterion };
+            group.evaluated += 1;
+            if (row.beatsBaseline) group.wins += 1;
+            groups[row.method] = group;
+            return groups;
+          }, {})
+        ).map(([method, group]) => ({
+          method,
+          criterion: group.criterion,
+          evaluated: group.evaluated,
+          wins: group.wins,
+          winPercent: Number(((group.wins / group.evaluated) * 100).toFixed(1)),
+        })),
         products: scored
           .sort((a, b) => (a.model.smape ?? 999) - (b.model.smape ?? 999))
           .slice(0, 50),

@@ -148,14 +148,18 @@ const run = async () => {
   };
 
   for (const product of products) {
-    const sales = generateDailyDemand(product.sku, DAYS);
+    const sales = generateDailyDemand(product.sku, DAYS, {
+      sellingPrice: product.sellingPrice,
+    });
 
     if (sales.length === 0) {
       logger.warn(`${product.name}: generator produced no sales, skipping.`);
       continue;
     }
 
-    const restocks = generateRestocks(product.sku, sales, DAYS);
+    const restocks = generateRestocks(product.sku, sales, DAYS, {
+      sellingPrice: product.sellingPrice,
+    });
 
     // Merge and replay chronologically so prevQuantity/newQuantity chain
     // correctly — the ledger has to add up, not just exist.

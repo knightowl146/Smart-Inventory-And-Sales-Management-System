@@ -9,9 +9,23 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Days are UTC days, everywhere in this module.
+ *
+ * This is not arbitrary. `setHours` works in the machine's local timezone while
+ * `toISOString` reports UTC, so mixing them shifts every date by one day for
+ * anyone east of Greenwich - the series, the forecast dates and the chart all
+ * silently slide. It passed in CI (UTC) and was wrong on the developer's own
+ * machine (UTC+5:30), which is the worst way for a bug like this to behave.
+ *
+ * UTC also matches the database: getAllDemandSeries groups with $dateToString,
+ * which is UTC unless given a timezone, so both sides agree on where a day
+ * begins. If you later want days to start at shop-local midnight, change both
+ * together - this function and that aggregation - or they will disagree again.
+ */
 const startOfDay = (date) => {
   const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
+  copy.setUTCHours(0, 0, 0, 0);
   return copy;
 };
 

@@ -55,26 +55,106 @@ const WEEKDAY_FACTORS = [1.25, 0.8, 0.85, 0.9, 1.0, 1.15, 1.45];
 const TRENDS = ["growing", "steady", "fading"];
 
 /**
+ * Draw a day's unit sales as a count, not as a rounded average.
+ *
+ * Rounding an expectation to the nearest whole number is wrong at both ends of
+ * this catalogue, in two different ways. Below half a unit a day - every laptop
+ * and television - Math.round returns zero every single day, so the product
+ * never sells at all, lands in dead stock on day one and gives the forecaster
+ * no history. And around one a day - tablets, monitors - it returns exactly 1
+ * every single day for six months, a series so unnaturally flat that "tomorrow
+ * equals today" predicts it perfectly and no real model can beat that. The
+ * second failure is the more embarrassing one, because it makes an honest
+ * backtest report that the forecaster is worse than doing nothing.
+ *
+ * The number of customers who walk in wanting one particular item on one
+ * particular day is a count of independent arrivals, which is what a Poisson
+ * distribution describes - and it is the distribution the intermittent-demand
+ * literature assumes for exactly this reason. It gives 0, 1, 2 and the
+ * occasional 3 around a mean of one, and it gives a genuine zero most days
+ * around a mean of 0.3, while keeping the long-run average intact.
+ *
+ * Knuth's method: multiply uniforms until the product falls below e^-lambda.
+ * It costs about lambda iterations, which is nothing at the rates here.
+ */
+const poissonSample = (lambda, random) => {
+  if (!(lambda > 0)) return 0;
+
+  const limit = Math.exp(-lambda);
+  let count = 0;
+  let product = random();
+
+  while (product > limit && count < 1000) {
+    count += 1;
+    product *= random();
+  }
+
+  return count;
+};
+
+/**
+ * Plausible daily unit sales for a product at a given price, as [low, high].
+ *
+ * Without price, demand is assigned purely by a hash of the SKU, so an 88,000
+ * workstation is as likely to sell thirty a day as a 200 cable. In an
+ * electronics shop the spread is the whole shape of the business: accessories
+ * move constantly at thin absolute margin, big-ticket items move rarely and
+ * carry the revenue. Getting that wrong makes ABC analysis, dead stock and the
+ * reorder plan all describe a shop that could not exist.
+ *
+ * A band rather than a multiplier on some independent rate, because a
+ * multiplier compounds two random draws and the tails run away: a fast-mover
+ * roll on a cheap item produced fifty cables a day, a slow-mover roll on a
+ * laptop produced three sales in six months - neither is a shop, and the
+ * second is worse, because under ten selling days the backtest refuses to
+ * score the product at all and the Forecast page goes quiet.
+ *
+ * Bands rather than a smooth curve, because the real thing is lumpy too -
+ * there is a genuine behavioural gap between an impulse buy and a purchase
+ * someone thinks about for a week.
+ */
+const priceDemandBand = (sellingPrice) => {
+  const price = Number(sellingPrice) || 0;
+
+  // No price given - the legacy path, used by the grocery seeder and the
+  // generator's own tests. Deliberately wide, because without price the only
+  // source of variety left is the SKU hash, and a narrow band there produces a
+  // flat catalogue where every product sells about the same amount.
+  if (price <= 0) return [0.4, 14];
+  if (price <= 500) return [7, 22]; // impulse buys at the counter
+  if (price <= 2000) return [3, 9];
+  if (price <= 8000) return [1.2, 4];
+  if (price <= 25000) return [0.5, 1.6];
+  if (price <= 60000) return [0.3, 0.8];
+  return [0.15, 0.45]; // considered purchases - a couple a week at most
+};
+
+/**
  * A product's demand profile, derived deterministically from its SKU.
  *
  * @param {string} sku
+ * @param {{sellingPrice?: number}} [options] when given, sets volume by price
  * @returns {{baseRate: number, trend: string, trendStrength: number, volatility: number, spikeChance: number}}
  */
-const profileFor = (sku) => {
+const profileFor = (sku, { sellingPrice } = {}) => {
   const random = createRandom(hashString(sku));
 
-  // Long tail: a few products sell a lot, most sell a little. A uniform
+  const [low, high] = priceDemandBand(sellingPrice);
+
+  // Where in the band this product sits, then a long tail on top: a few
+  // products are the ones people come in for, a few barely move. A uniform
   // distribution would make ABC analysis and dead-stock detection meaningless.
+  const withinBand = low + random() * (high - low);
+
   const roll = random();
-  const baseRate =
-    roll > 0.88
-      ? 12 + random() * 18 // fast movers
-      : roll > 0.55
-        ? 3 + random() * 6 // steady sellers
-        : 0.3 + random() * 2; // slow movers
+  const tailFactor = roll > 0.9 ? 1.6 : roll < 0.35 ? 0.55 : 1;
+
+  // Floored rather than allowed to reach zero: an expensive item should sell
+  // rarely, not never, or every laptop lands in dead stock on day one.
+  const baseRate = Math.max(0.08, withinBand * tailFactor);
 
   return {
-    baseRate: Number(baseRate.toFixed(2)),
+    baseRate: Number(baseRate.toFixed(3)),
     trend: TRENDS[Math.floor(random() * TRENDS.length)],
     trendStrength: 0.1 + random() * 0.5,
     volatility: 0.15 + random() * 0.35,
@@ -87,11 +167,12 @@ const profileFor = (sku) => {
  *
  * @param {string} sku
  * @param {number} days
+ * @param {{sellingPrice?: number}} [options]
  * @returns {Array<{dayOffset: number, quantity: number, isSpike: boolean}>}
  *          dayOffset counts back from today: `days` is the oldest day, 1 is yesterday.
  */
-const generateDailyDemand = (sku, days) => {
-  const profile = profileFor(sku);
+const generateDailyDemand = (sku, days, options = {}) => {
+  const profile = profileFor(sku, options);
   const random = createRandom(hashString(`${sku}:series`));
   const series = [];
 
@@ -121,8 +202,8 @@ const generateDailyDemand = (sku, days) => {
 
     const expected = profile.baseRate * trendFactor * weekday * noise * spikeFactor;
 
-    // Demand is whole units, and most quiet days genuinely sell nothing.
-    const quantity = Math.max(0, Math.round(expected));
+    // Whole units, drawn as a count rather than rounded. See poissonSample.
+    const quantity = poissonSample(expected, random);
 
     if (quantity > 0) {
       series.push({ dayOffset, quantity, isSpike, date: new Date(date) });
@@ -142,14 +223,32 @@ const generateDailyDemand = (sku, days) => {
  *
  * @returns {Array<{dayOffset: number, quantity: number, date: Date}>}
  */
-const generateRestocks = (sku, sales, days, { startingStock = 0, coverDays = 21 } = {}) => {
+const generateRestocks = (
+  sku,
+  sales,
+  days,
+  { startingStock = 0, coverDays = 21, sellingPrice } = {}
+) => {
   const random = createRandom(hashString(`${sku}:restock`));
-  const profile = profileFor(sku);
+  // Must use the same profile the sales were generated from, or restocking is
+  // sized for a demand rate the shop does not actually have.
+  const profile = profileFor(sku, { sellingPrice });
 
   const restocks = [];
   let stock = startingStock;
 
-  const targetCover = Math.max(10, Math.ceil(profile.baseRate * coverDays));
+  /**
+   * A floor on the delivery size, so a slow seller is not restocked one unit
+   * at a time - but a price-aware floor. Ten is a sensible minimum carton of
+   * cables and an absurd minimum order of 88,000 workstations: it would put
+   * nearly a million rupees of stock on the shelf for a product that sells one
+   * a fortnight, and every capital-tied-up figure in the reports would be
+   * wrong.
+   */
+  const price = Number(sellingPrice) || 0;
+  const minCover = price > 25000 ? 3 : price > 8000 ? 5 : 10;
+
+  const targetCover = Math.max(minCover, Math.ceil(profile.baseRate * coverDays));
 
   // An opening delivery, so the shop does not begin at zero.
   restocks.push({
@@ -181,6 +280,8 @@ const generateRestocks = (sku, sales, days, { startingStock = 0, coverDays = 21 
 module.exports = {
   createRandom,
   hashString,
+  priceDemandBand,
+  poissonSample,
   profileFor,
   generateDailyDemand,
   generateRestocks,

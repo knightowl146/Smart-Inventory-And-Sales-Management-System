@@ -6,7 +6,13 @@ const {
   matchLine,
   matchInvoice,
 } = require("../services/ai/invoiceMatcher");
-const { generateDailyDemand, generateRestocks, profileFor } = require("../services/seed/demandGenerator");
+const {
+  generateDailyDemand,
+  generateRestocks,
+  profileFor,
+  priceDemandBand,
+} = require("../services/seed/demandGenerator");
+const { buildCatalogue } = require("../services/seed/electronicsCatalogue");
 
 /**
  * Invoice matching, against the kind of text suppliers actually print.
@@ -288,5 +294,118 @@ describe("demand generator", () => {
     // The forecaster needs 42+ observations before it will attempt seasonality.
     const series = generateDailyDemand("CLG-TP-100", 180);
     expect(series.length).toBeGreaterThan(42);
+  });
+
+  // ── Price, which is what makes an electronics catalogue plausible ──────────
+
+  it("sells cheap things far more often than expensive ones", () => {
+    const cable = profileFor("PWR-001", { sellingPrice: 199 });
+    const laptop = profileFor("LAP-005", { sellingPrice: 87999 });
+
+    expect(cable.baseRate).toBeGreaterThan(laptop.baseRate * 10);
+  });
+
+  it("lowers the demand band at every step up in price", () => {
+    const prices = [199, 1499, 4999, 19999, 44999, 87999];
+    const bands = prices.map(priceDemandBand);
+
+    for (let i = 1; i < bands.length; i += 1) {
+      // Both ends must fall. Adjacent bands are allowed to overlap slightly -
+      // a dull cheap product really can sell less than a popular dearer one -
+      // but the band can never rise as the price does.
+      expect(bands[i][0]).toBeLessThan(bands[i - 1][0]);
+      expect(bands[i][1]).toBeLessThan(bands[i - 1][1]);
+    }
+
+    // Two steps apart, though, the bands must not overlap at all, or price
+    // barely shapes the catalogue and ABC analysis has nothing to sort by.
+    for (let i = 2; i < bands.length; i += 1) {
+      expect(bands[i][1]).toBeLessThan(bands[i - 2][0]);
+    }
+  });
+
+  it("still sells an expensive product, rather than rounding it to never", () => {
+    /**
+     * The regression this exists for: Math.round on an expectation below 0.5
+     * returns zero every single day, so every laptop and television sold
+     * nothing across six months, landed in dead stock on day one, and gave the
+     * forecaster no history to fit.
+     */
+    const series = generateDailyDemand("LAP-005", 180, { sellingPrice: 87999 });
+    const units = series.reduce((total, point) => total + point.quantity, 0);
+
+    expect(series.length).toBeGreaterThanOrEqual(10); // backtest's minimum
+    expect(units).toBeGreaterThan(15);
+  });
+
+  it("keeps stochastic rounding unbiased - the mean is the rate we asked for", () => {
+    const rate = profileFor("TVD-004", { sellingPrice: 69999 }).baseRate;
+    const series = generateDailyDemand("TVD-004", 720, { sellingPrice: 69999 });
+    const perDay = series.reduce((total, point) => total + point.quantity, 0) / 720;
+
+    // Generous bounds: trend, weekday factors and spikes all move this around.
+    expect(perDay).toBeGreaterThan(rate * 0.6);
+    expect(perDay).toBeLessThan(rate * 2);
+  });
+
+  it("does not order 88,000-rupee laptops ten at a time", () => {
+    const sales = generateDailyDemand("LAP-005", 180, { sellingPrice: 87999 });
+    const restocks = generateRestocks("LAP-005", sales, 180, { sellingPrice: 87999 });
+
+    // A ten-unit minimum delivery is a sensible carton of cables and nearly a
+    // million rupees of workstations sitting on a shelf.
+    expect(Math.max(...restocks.map((r) => r.quantity))).toBeLessThanOrEqual(8);
+  });
+});
+
+// ── The electronics catalogue ────────────────────────────────────────────────
+
+describe("electronics catalogue", () => {
+  const catalogue = buildCatalogue();
+
+  it("has no duplicate SKUs", () => {
+    const skus = new Set(catalogue.map((product) => product.sku));
+    expect(skus.size).toBe(catalogue.length);
+  });
+
+  it("satisfies the Product schema's own constraints", () => {
+    for (const product of catalogue) {
+      expect(product.name.length).toBeGreaterThanOrEqual(3);
+      expect(product.name.length).toBeLessThanOrEqual(100);
+      expect(product.description).toBeTruthy();
+      expect(product.category).toBeTruthy();
+      expect(product.lowStockThreshold).toBeGreaterThan(0);
+      // The schema requires unitPrice, and the rest of the app reads
+      // sellingPrice. They must not disagree.
+      expect(product.unitPrice).toBe(product.sellingPrice);
+    }
+  });
+
+  it("sells everything above cost", () => {
+    const losers = catalogue.filter((p) => p.sellingPrice <= p.purchasePrice);
+    expect(losers).toEqual([]);
+  });
+
+  it("spans enough price range to make the price banding matter", () => {
+    const prices = catalogue.map((product) => product.sellingPrice);
+    expect(Math.min(...prices)).toBeLessThan(500);
+    expect(Math.max(...prices)).toBeGreaterThan(50000);
+  });
+
+  it("leaves stock at zero for seed:history to fill in", () => {
+    // Any quantity set here would be overwritten by the ledger replay anyway,
+    // and a figure the movements do not support breaks the reorder maths.
+    expect(catalogue.every((product) => product.quantity === 0)).toBe(true);
+  });
+
+  it("gives every product enough selling days to forecast from", () => {
+    // Under ten selling days in the training window, backtest() returns null
+    // and the Forecast page has nothing to say about that product.
+    const quiet = catalogue.filter(
+      (product) =>
+        generateDailyDemand(product.sku, 180, { sellingPrice: product.sellingPrice }).length < 15
+    );
+
+    expect(quiet.map((product) => product.name)).toEqual([]);
   });
 });

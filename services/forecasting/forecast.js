@@ -1,6 +1,8 @@
 const {
   mean,
   standardDeviation,
+  median,
+  robustZScores,
   weekdayProfile,
   addDays,
   dayKey,
@@ -40,6 +42,59 @@ const DEFAULT_PARAMS = Object.freeze({
 const Z = Object.freeze({ 0.8: 1.2816, 0.9: 1.6449, 0.95: 1.96 });
 
 const clampToZero = (value) => (value > 0 ? value : 0);
+
+/**
+ * Threshold on the robust z-score above which a day is treated as a one-off
+ * rather than as demand. 3.5 is the conventional cut for modified z-scores and
+ * is deliberately loose: a busy Saturday should survive it comfortably.
+ */
+const OUTLIER_Z = 3.5;
+
+/**
+ * Cap one-off spikes before fitting, leaving the rest of the series untouched.
+ *
+ * Exponential smoothing has no defence against a single enormous day. One bulk
+ * order - a school buying forty HDMI cables at once - arrives as the last
+ * observation, alpha pulls the level up towards it, beta reads the jump as the
+ * start of a trend, and because the damped trend accumulates to phi/(1-phi) = 9
+ * times the per-step trend, a thirty-day forecast then climbs to roughly triple
+ * actual demand. Measured on the seeded catalogue, that single failure mode was
+ * the difference between the model losing to a seasonal-naive baseline on most
+ * products and beating it on most.
+ *
+ * Winsorising rather than deleting: the day still counts, it just counts as a
+ * very busy day instead of as evidence about next month. And only for fitting -
+ * the raw series is what the anomaly feed reads, because a bulk order is
+ * exactly what that page exists to surface. The forecaster should not be
+ * surprised by it; the shopkeeper should.
+ *
+ * @param {number[]} values
+ * @returns {{values: number[], capped: number}}
+ */
+const winsorise = (values, threshold = OUTLIER_Z) => {
+  if (values.length < SEASON_LENGTH * 2) return { values, capped: 0 };
+
+  const scores = robustZScores(values);
+  const centre = median(values);
+
+  // The largest value that was not itself judged an outlier - a cap taken from
+  // the data rather than an invented multiple of the median, so a genuinely
+  // spiky product keeps its range.
+  const ordinary = values.filter((_, index) => Math.abs(scores[index]) <= threshold);
+  const ceiling = ordinary.length > 0 ? Math.max(...ordinary) : centre;
+
+  let capped = 0;
+
+  const cleaned = values.map((value, index) => {
+    if (scores[index] > threshold && value > ceiling) {
+      capped += 1;
+      return ceiling;
+    }
+    return value;
+  });
+
+  return { values: cleaned, capped };
+};
 
 /**
  * Holt-Winters, additive, with a damped trend.
@@ -97,7 +152,78 @@ const fitDampedTrend = (values, params = DEFAULT_PARAMS) => {
   return { level, trend, fitted, params };
 };
 
+/**
+ * Croston's method, with the Syntetos-Boylan correction.
+ *
+ * Exponential smoothing assumes something sells most days. A 60,000 laptop does
+ * not: it sells on one day in five and nothing on the other four, and fitting a
+ * weekly seasonal model to that is fitting a pattern to the gaps. Holt-Winters
+ * lost to "assume next Tuesday looks like last Tuesday" on every such product
+ * in the catalogue, for the uncomfortable reason that a baseline predicting
+ * zero is nearly right when the answer is usually zero.
+ *
+ * Croston splits the problem in two and smooths each separately: how much sells
+ * when something sells (z), and how many days pass between sales (p). The
+ * forecast is z/p - a fractional rate, which is the honest answer for a product
+ * that sells 0.3 a day. Plain Croston is known to be biased upward, so this
+ * applies the Syntetos-Boylan approximation, (1 - alpha/2), which is the
+ * standard correction and the reason the method is usually written SBA.
+ *
+ * Deliberately not seasonal: with four selling days in a fortnight there is no
+ * weekday evidence to speak of, and pretending otherwise is how a forecast
+ * acquires false confidence.
+ */
+const fitCroston = (values, alpha = 0.15) => {
+  const firstNonZero = values.findIndex((value) => value > 0);
+
+  if (firstNonZero === -1) return { rate: 0, fitted: values.map(() => 0), alpha };
+
+  let size = values[firstNonZero];
+  let interval = Math.max(1, firstNonZero + 1);
+  let sinceLast = 0;
+
+  const correction = 1 - alpha / 2;
+  const fitted = [];
+
+  for (let t = 0; t < values.length; t += 1) {
+    fitted.push(t <= firstNonZero ? size / interval : (correction * size) / interval);
+
+    sinceLast += 1;
+
+    if (values[t] > 0 && t > firstNonZero) {
+      size = alpha * values[t] + (1 - alpha) * size;
+      interval = alpha * sinceLast + (1 - alpha) * interval;
+      sinceLast = 0;
+    } else if (values[t] > 0) {
+      sinceLast = 0;
+    }
+  }
+
+  return { rate: (correction * size) / interval, fitted, alpha };
+};
+
+/**
+ * Average demand interval: days of history per day that actually sold.
+ *
+ * Syntetos and Boylan put the boundary between smooth and intermittent demand
+ * at 1.32, and that number is used here rather than invented because it is the
+ * one the literature and every forecasting package agree on.
+ */
+const AVERAGE_DEMAND_INTERVAL_CUTOFF = 1.32;
+
+const averageDemandInterval = (values) => {
+  const sellingDays = values.filter((value) => value > 0).length;
+  return sellingDays === 0 ? Infinity : values.length / sellingDays;
+};
+
 const chooseMethod = (values) => {
+  if (
+    values.length >= MIN_DAYS_FOR_TREND &&
+    averageDemandInterval(values) >= AVERAGE_DEMAND_INTERVAL_CUTOFF
+  ) {
+    return "croston";
+  }
+
   if (values.length >= MIN_DAYS_FOR_SEASONALITY) return "holt-winters";
   if (values.length >= MIN_DAYS_FOR_TREND) return "damped-trend";
   return "mean";
@@ -142,16 +268,37 @@ const forecastDemand = (series, horizon = 30, confidence = 0.8) => {
 
   if (values.length === 0) return empty;
 
+  /**
+   * A product with a long run of zeros is not a forecastable product.
+   *
+   * The series is padded to the full lookback window, so a product that has
+   * never sold arrives here as 180 observations - enough to satisfy every
+   * length check, and Holt-Winters will happily fit it and predict zero
+   * forever with perfect accuracy. That is a true statement and a useless one,
+   * and presenting it as a forecast implies knowledge the data does not
+   * contain. Say there is nothing to forecast instead.
+   */
+  if (!values.some((value) => value > 0)) {
+    return {
+      ...empty,
+      observations: values.length,
+      warning: "No sales recorded for this product in the period, so there is nothing to forecast.",
+    };
+  }
+
   const method = chooseMethod(values);
   const lastDate = dates.length > 0 ? new Date(`${dates[dates.length - 1]}T00:00:00Z`) : new Date();
+
+  // Fit on the de-spiked series; report against the real one.
+  const { values: fitValues, capped } = winsorise(values);
 
   let predictAhead;
   let fitted;
 
   if (method === "holt-winters") {
-    const model = fitHoltWinters(values);
+    const model = fitHoltWinters(fitValues);
     fitted = model.fitted;
-    const n = values.length;
+    const n = fitValues.length;
 
     predictAhead = (step) => {
       // Damped trend: the cumulative damping factor, not phi^step.
@@ -162,8 +309,14 @@ const forecastDemand = (series, horizon = 30, confidence = 0.8) => {
       const seasonIndex = (n + step - 1) % SEASON_LENGTH;
       return model.level + damping * model.trend + model.season[seasonIndex];
     };
+  } else if (method === "croston") {
+    const model = fitCroston(fitValues);
+    fitted = model.fitted;
+
+    // A rate, not a trend: the same expected fraction of a unit every day.
+    predictAhead = () => model.rate;
   } else if (method === "damped-trend") {
-    const model = fitDampedTrend(values);
+    const model = fitDampedTrend(fitValues);
     fitted = model.fitted;
 
     predictAhead = (step) => {
@@ -174,7 +327,7 @@ const forecastDemand = (series, horizon = 30, confidence = 0.8) => {
       return model.level + damping * model.trend;
     };
   } else {
-    const average = mean(values);
+    const average = mean(fitValues);
     fitted = values.map(() => average);
     predictAhead = () => average;
   }
@@ -215,8 +368,19 @@ const forecastDemand = (series, horizon = 30, confidence = 0.8) => {
   }
 
   let warning = null;
+  if (capped > 0 && values.length >= MIN_DAYS_FOR_TREND) {
+    warning = `${capped} unusually large ${
+      capped === 1 ? "day was" : "days were"
+    } capped before fitting, so a one-off bulk order does not become next month's forecast.`;
+  }
   if (values.length < MIN_DAYS_FOR_TREND) {
     warning = `Only ${values.length} days of history - this is an average, not a trend.`;
+  } else if (method === "croston") {
+    // Says plainly why the chart is a flat line rather than a seasonal wave -
+    // otherwise it reads as a broken forecast rather than a deliberate one.
+    warning = `This product sells on roughly one day in ${Math.round(
+      averageDemandInterval(values)
+    )} - too irregular for a weekly pattern, so this is a steady rate rather than a day-by-day shape.`;
   } else if (values.length < MIN_DAYS_FOR_SEASONALITY) {
     warning = `${values.length} days of history - not enough to model weekly seasonality.`;
   }
@@ -230,6 +394,7 @@ const forecastDemand = (series, horizon = 30, confidence = 0.8) => {
     dailyStdDev: Number(standardDeviation(values).toFixed(3)),
     residualStdDev: Number(residualStdDev.toFixed(3)),
     observations: values.length,
+    cappedDays: capped,
     confidence,
     warning,
   };
@@ -240,6 +405,11 @@ module.exports = {
   MIN_DAYS_FOR_TREND,
   MIN_DAYS_FOR_SEASONALITY,
   DEFAULT_PARAMS,
+  OUTLIER_Z,
+  AVERAGE_DEMAND_INTERVAL_CUTOFF,
+  winsorise,
+  averageDemandInterval,
+  fitCroston,
   fitHoltWinters,
   fitDampedTrend,
   chooseMethod,

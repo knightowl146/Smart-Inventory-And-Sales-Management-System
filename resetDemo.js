@@ -114,7 +114,9 @@ const run = async () => {
   // connection handling. Shelling out keeps one implementation of each rather
   // than a second copy that drifts.
   logger.info("Seeding catalogue…");
-  execFileSync(process.execPath, ["seedProducts.js"], { stdio: "inherit" });
+  // --yes: seedElectronics asks before deleting, and there is nobody at the
+  // keyboard here. The confirmation this script already obtained covers it.
+  execFileSync(process.execPath, ["seedElectronics.js", "--yes"], { stdio: "inherit" });
 
   logger.info(`Seeding ${HISTORY_DAYS} days of trading history…`);
   execFileSync(process.execPath, ["seedHistory.js", `--days=${HISTORY_DAYS}`, "--fresh"], {

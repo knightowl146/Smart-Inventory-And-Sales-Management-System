@@ -1,5 +1,21 @@
-const { toDailySeries, mean, standardDeviation, weekdayProfile } = require("../services/forecasting/timeSeries");
-const { forecastDemand, chooseMethod, fitHoltWinters } = require("../services/forecasting/forecast");
+const {
+  toDailySeries,
+  mean,
+  standardDeviation,
+  weekdayProfile,
+  dayKey,
+  startOfDay,
+  addDays,
+} = require("../services/forecasting/timeSeries");
+const {
+  forecastDemand,
+  chooseMethod,
+  fitHoltWinters,
+  fitCroston,
+  winsorise,
+  averageDemandInterval,
+  AVERAGE_DEMAND_INTERVAL_CUTOFF,
+} = require("../services/forecasting/forecast");
 const { backtest, symmetricMape, meanAbsoluteError } = require("../services/forecasting/backtest");
 const { calculateReorderPolicy, explainPolicy } = require("../services/inventory/reorder");
 const {
@@ -18,6 +34,34 @@ const {
  */
 
 // ── Building a series from a sparse ledger ───────────────────────────────────
+
+describe("day handling", () => {
+  /**
+   * These are the regression tests for a bug that passed in UTC and was wrong
+   * in every timezone east of Greenwich: startOfDay used setHours (local) while
+   * dayKey used toISOString (UTC), so every date in the series, the forecast
+   * and the chart slid back by one day.
+   *
+   * tests/setup.js pins the suite to Asia/Kolkata precisely so these can fail.
+   */
+  it("assigns an instant to its UTC day, whatever the local clock says", () => {
+    for (const hour of ["00", "06", "12", "18", "23"]) {
+      expect(dayKey(new Date(`2026-03-15T${hour}:00:00Z`))).toBe("2026-03-15");
+    }
+  });
+
+  it("truncates to UTC midnight, not local midnight", () => {
+    expect(startOfDay(new Date("2026-03-15T18:45:00Z")).toISOString()).toBe(
+      "2026-03-15T00:00:00.000Z"
+    );
+  });
+
+  it("adds whole days without drifting", () => {
+    expect(dayKey(addDays(new Date("2026-02-27T00:00:00Z"), 1))).toBe("2026-02-28");
+    expect(dayKey(addDays(new Date("2026-02-28T00:00:00Z"), 1))).toBe("2026-03-01");
+    expect(dayKey(addDays(new Date("2026-12-31T00:00:00Z"), 1))).toBe("2027-01-01");
+  });
+});
 
 describe("toDailySeries", () => {
   it("fills the gaps - a day with no sale is a zero, not a missing row", () => {
@@ -91,6 +135,67 @@ describe("chooseMethod", () => {
     expect(chooseMethod(new Array(10).fill(5))).toBe("mean");
     expect(chooseMethod(new Array(20).fill(5))).toBe("damped-trend");
     expect(chooseMethod(new Array(60).fill(5))).toBe("holt-winters");
+  });
+
+  it("sends intermittent demand to Croston rather than to a weekly model", () => {
+    // A laptop: sells on one day in five, nothing on the other four. There is
+    // no weekday pattern to find in that, only gaps.
+    const values = Array.from({ length: 140 }, (_, i) => (i % 5 === 0 ? 1 : 0));
+
+    expect(averageDemandInterval(values)).toBeGreaterThan(AVERAGE_DEMAND_INTERVAL_CUTOFF);
+    expect(chooseMethod(values)).toBe("croston");
+  });
+
+  it("leaves everyday demand on the seasonal model", () => {
+    const values = Array.from({ length: 140 }, (_, i) => 4 + (i % 7));
+    expect(chooseMethod(values)).toBe("holt-winters");
+  });
+});
+
+// ── Robustness to one-off spikes ─────────────────────────────────────────────
+
+describe("winsorise", () => {
+  it("caps a bulk order without touching an ordinary busy day", () => {
+    const values = new Array(60).fill(3);
+    values[20] = 6; // a good day
+    values[59] = 80; // a school buying eighty cables at once
+
+    const { values: cleaned, capped } = winsorise(values);
+
+    expect(capped).toBe(1);
+    expect(cleaned[59]).toBeLessThan(80);
+    expect(cleaned[20]).toBe(6);
+    expect(cleaned[0]).toBe(3);
+  });
+
+  it("leaves a series with no outliers exactly as it found it", () => {
+    const values = Array.from({ length: 60 }, (_, i) => 5 + (i % 4));
+    const { values: cleaned, capped } = winsorise(values);
+
+    expect(capped).toBe(0);
+    expect(cleaned).toEqual(values);
+  });
+
+  it("stops one bulk order from becoming next month's forecast", () => {
+    /**
+     * The regression this exists for. A spike on the final training day pulled
+     * the level up and started a trend; because the damped trend accumulates to
+     * phi/(1-phi) = 9 times its per-step value, a thirty-day forecast climbed
+     * to roughly triple actual demand.
+     */
+    const days = 120;
+    const values = Array.from({ length: days }, (_, i) => 10 + (i % 7 < 2 ? 4 : 0));
+    values[days - 1] = 90;
+
+    const dates = values.map((_, i) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+    const result = forecastDemand({ dates, values }, 30);
+
+    expect(result.cappedDays).toBe(1);
+    expect(result.warning).toMatch(/capped/i);
+
+    // Demand runs 10-14 a day. Anything near 40 means the spike won.
+    const last = result.points[result.points.length - 1].expected;
+    expect(last).toBeLessThan(25);
   });
 });
 
@@ -174,6 +279,22 @@ describe("forecastDemand", () => {
     expect(thin.warning).toMatch(/9 days/);
   });
 
+  it("declines to forecast a product that has never sold", () => {
+    // The series is padded to the full window, so this arrives as 180 valid
+    // observations. Holt-Winters would fit it and predict zero forever with
+    // perfect confidence - true, useless, and misleading to present.
+    const dates = [];
+    for (let i = 0; i < 180; i += 1) {
+      dates.push(new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+    }
+
+    const forecast = forecastDemand({ dates, values: new Array(180).fill(0) }, 30);
+
+    expect(forecast.method).toBe("none");
+    expect(forecast.points).toEqual([]);
+    expect(forecast.warning).toMatch(/nothing to forecast/i);
+  });
+
   it("handles no history at all", () => {
     const forecast = forecastDemand({ dates: [], values: [] }, 7);
 
@@ -242,10 +363,112 @@ describe("backtest", () => {
     expect(result.model.mae).toBeGreaterThan(0);
   });
 
+  it("refuses to score a product with no demand, rather than claiming a perfect fit", () => {
+    // All zeros scores MAE 0 against baselines that also score 0 - "the model
+    // perfectly predicts nothing", reported as an achievement.
+    expect(backtest(flatSeries(180, 0), 30)).toBeNull();
+  });
+
+  it("refuses to score a product that barely sells", () => {
+    const values = new Array(180).fill(0);
+    values[10] = 1;
+    values[40] = 2;
+    const dates = values.map((_, i) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+
+    expect(backtest({ dates, values }, 30)).toBeNull();
+  });
+
   it("keeps the holdout out of training", () => {
     const result = backtest(seasonalSeries(140), 30);
     expect(result.trainingDays).toBe(110);
     expect(result.holdoutDays).toBe(30);
+  });
+
+  it("does not let the seasonal baseline read the holdout", () => {
+    /**
+     * The leak this exists for: scoring the baseline as "the value seven days
+     * before this one" reaches past the split seven days in, so for
+     * twenty-three of thirty days it was quoting the answers. A baseline that
+     * can see the future beats everything, and the model looked mediocre next
+     * to it.
+     *
+     * Detected by making the holdout behave nothing like the training window.
+     * A leaking baseline tracks the change; an honest one cannot.
+     */
+    const values = [...new Array(110).fill(4), ...new Array(30).fill(40)];
+    const dates = values.map((_, i) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+
+    const result = backtest({ dates, values }, 30);
+
+    // Training says 4 a day, the holdout is 40 a day. Nothing that only saw
+    // the training window can be closer than about 36 a day out.
+    expect(result.baselines.seasonalNaive.mae).toBeGreaterThan(30);
+    expect(result.baselines.naive.mae).toBeGreaterThan(30);
+  });
+
+  it("scores intermittent demand on the total, not on day-by-day error", () => {
+    /**
+     * MAE is minimised by the median, which is zero for a product that sells
+     * one day in five - so "predict nothing, ever" is unbeatable on MAE and no
+     * forecast can win. Judged on the total over the window, which is what the
+     * reorder point is computed from, predicting zero is as wrong as it
+     * deserves to be.
+     */
+    const values = Array.from({ length: 180 }, (_, i) => (i % 5 === 0 ? 2 : 0));
+    const dates = values.map((_, i) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+
+    const result = backtest({ dates, values }, 30);
+
+    expect(result.method).toBe("croston");
+    expect(result.criterion).toBe("total-over-window");
+    expect(result.cumulative.actual).toBe(12);
+    // Roughly twelve units expected over the month, against a naive baseline
+    // that predicts none at all.
+    expect(result.cumulative.modelError).toBeLessThan(result.cumulative.naiveError);
+    expect(result.beatsBaseline).toBe(true);
+  });
+
+  it("keeps smooth demand on the day-by-day criterion", () => {
+    const result = backtest(seasonalSeries(140), 30);
+    expect(result.criterion).toBe("daily-mae");
+  });
+
+  it("does not report a percentage against a baseline error of nearly zero", () => {
+    // A baseline that lands within a unit of the right answer by luck once
+    // used to make the model look a hundred billion percent worse.
+    const values = Array.from({ length: 180 }, (_, i) => (i % 6 === 0 ? 1 : 0));
+    const dates = values.map((_, i) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+
+    const result = backtest({ dates, values }, 30);
+
+    expect(result.improvementOverBest).toBeGreaterThanOrEqual(-999);
+    expect(result.improvementOverBest).toBeLessThanOrEqual(999);
+  });
+});
+
+// ── Croston's method ─────────────────────────────────────────────────────────
+
+describe("fitCroston", () => {
+  it("returns a fractional rate for a product that sells every fifth day", () => {
+    const values = Array.from({ length: 100 }, (_, i) => (i % 5 === 0 ? 1 : 0));
+    const { rate } = fitCroston(values);
+
+    // One unit every five days is 0.2 a day; the Syntetos-Boylan correction
+    // pulls it slightly below that on purpose, since plain Croston runs high.
+    expect(rate).toBeGreaterThan(0.15);
+    expect(rate).toBeLessThan(0.21);
+  });
+
+  it("separates how much sells from how often", () => {
+    const rare = Array.from({ length: 100 }, (_, i) => (i % 10 === 0 ? 4 : 0));
+    const often = Array.from({ length: 100 }, (_, i) => (i % 5 === 0 ? 2 : 0));
+
+    // Same units per day by two different routes - the rate should agree.
+    expect(Math.abs(fitCroston(rare).rate - fitCroston(often).rate)).toBeLessThan(0.1);
+  });
+
+  it("reports nothing for a product that has never sold", () => {
+    expect(fitCroston(new Array(60).fill(0)).rate).toBe(0);
   });
 });
 

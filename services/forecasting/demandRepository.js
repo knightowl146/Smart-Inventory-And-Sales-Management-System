@@ -14,10 +14,12 @@ const { toDailySeries, mean, standardDeviation } = require("./timeSeries");
 
 const DEFAULT_LOOKBACK_DAYS = 180;
 
+// UTC, to agree with services/forecasting/timeSeries.js and with the
+// $dateToString grouping below - see the note there.
 const daysAgo = (days) => {
   const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - days);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() - days);
   return date;
 };
 
@@ -31,7 +33,7 @@ const daysAgo = (days) => {
 const getProductDemandSeries = async (productId, lookbackDays = DEFAULT_LOOKBACK_DAYS) => {
   const from = daysAgo(lookbackDays);
   const to = new Date();
-  to.setHours(0, 0, 0, 0);
+  to.setUTCHours(0, 0, 0, 0);
 
   const movements = await StockMovement.find({
     product: productId,
@@ -56,7 +58,7 @@ const getProductDemandSeries = async (productId, lookbackDays = DEFAULT_LOOKBACK
 const getAllDemandSeries = async (lookbackDays = DEFAULT_LOOKBACK_DAYS) => {
   const from = daysAgo(lookbackDays);
   const to = new Date();
-  to.setHours(0, 0, 0, 0);
+  to.setUTCHours(0, 0, 0, 0);
 
   const rows = await StockMovement.aggregate([
     { $match: { type: "SALE", createdAt: { $gte: from } } },
