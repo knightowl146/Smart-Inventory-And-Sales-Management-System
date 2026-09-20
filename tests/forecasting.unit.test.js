@@ -150,6 +150,31 @@ describe("chooseMethod", () => {
     const values = Array.from({ length: 140 }, (_, i) => 4 + (i % 7));
     expect(chooseMethod(values)).toBe("holt-winters");
   });
+
+  it("does not count a product's pre-existence as failing to sell", () => {
+    /**
+     * The regression this exists for. The series is padded to the full lookback
+     * window, so a product added ninety days ago arrives with ninety leading
+     * zeros. Counting those made something that sells EVERY DAY look like it
+     * sells one day in two, routed it to the intermittent method, and threw
+     * away the weekly pattern it actually has. Every new product would have
+     * passed through this on its way to becoming an established one.
+     */
+    const selling = Array.from({ length: 90 }, (_, i) => ([0, 6].includes(i % 7) ? 8 : 4));
+    const padded = [...new Array(90).fill(0), ...selling];
+
+    expect(averageDemandInterval(padded)).toBe(1);
+    expect(chooseMethod(padded)).toBe("holt-winters");
+  });
+
+  it("still counts zeros that come after a product stopped selling", () => {
+    // Trailing zeros are real: the shop genuinely sold none. Only the gap
+    // before the first sale is an artefact of the window.
+    const died = [...new Array(60).fill(3), ...new Array(120).fill(0)];
+
+    expect(averageDemandInterval(died)).toBe(3);
+    expect(chooseMethod(died)).toBe("croston");
+  });
 });
 
 // ── Robustness to one-off spikes ─────────────────────────────────────────────

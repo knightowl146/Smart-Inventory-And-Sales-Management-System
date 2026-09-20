@@ -212,8 +212,27 @@ const fitCroston = (values, alpha = 0.15) => {
 const AVERAGE_DEMAND_INTERVAL_CUTOFF = 1.32;
 
 const averageDemandInterval = (values) => {
-  const sellingDays = values.filter((value) => value > 0).length;
-  return sellingDays === 0 ? Infinity : values.length / sellingDays;
+  /**
+   * Measured from the first sale onwards, never from the start of the window.
+   *
+   * The series is padded to the full lookback period, so a product added two
+   * months ago arrives with four months of leading zeros in front of it. Those
+   * zeros are the product not existing yet, not customers declining to buy it -
+   * and counting them makes an item that sells every single day look like it
+   * sells one day in two, which routes it to the intermittent-demand method and
+   * throws away the weekly pattern it genuinely has. Every new product in the
+   * catalogue would hit this on its way to becoming an established one.
+   *
+   * Trailing zeros are left in deliberately: a product that stopped selling
+   * last month really has stopped selling, and that is worth knowing.
+   */
+  const firstSale = values.findIndex((value) => value > 0);
+  if (firstSale === -1) return Infinity;
+
+  const active = values.slice(firstSale);
+  const sellingDays = active.filter((value) => value > 0).length;
+
+  return active.length / sellingDays;
 };
 
 const chooseMethod = (values) => {
