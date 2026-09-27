@@ -1,0 +1,70 @@
+# Keeps the live demo's trading history continuous.
+#
+# The demo shop only trades when someone uses it, so every quiet day became a
+# hole in the dashboard, the forecasts and the anomaly feed. This runs the gap
+# filler (seedCatchup.js) once a day. It is idempotent: with nothing missing it
+# finds no gap and writes nothing, so a delayed or repeated run is harmless.
+#
+# Setup, once: repository Settings -> Secrets and variables -> Actions ->
+# New repository secret, name SEED_MONGO_URI, value the Atlas connection string
+# INCLUDING the database name (.../smart-inventory-db?...). Then run it once by
+# hand from the Actions tab to check it works.
+#
+# Only for the demo database. seedCatchup.js refuses to run unattended unless
+# DEMO_MODE=true, which is set below - never point SEED_MONGO_URI at real data.
+
+name: Fill demo history
+
+on:
+  schedule:
+    # 00:15 UTC is 05:45 IST: just after the UTC day ends, which is the day
+    # boundary the analytics use, so "yesterday" is complete when it runs.
+    - cron: "15 0 * * *"
+  # A "Run workflow" button on the Actions tab, for testing and catching up.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A manual run and the scheduled one must not fill the same day twice.
+concurrency:
+  group: demo-catchup
+  cancel-in-progress: false
+
+jobs:
+  catchup:
+    name: Fill any days with no trading
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check the database secret is set
+        env:
+          SEED_MONGO_URI: ${{ secrets.SEED_MONGO_URI }}
+        run: |
+          if [ -z "$SEED_MONGO_URI" ]; then
+            echo "::error::Add the SEED_MONGO_URI secret: Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Production dependencies only - the script needs mongoose, not jest.
+      - run: npm ci --omit=dev
+
+      - name: Fill the gap
+        run: node seedCatchup.js --yes
+        env:
+          SEED_MONGO_URI: ${{ secrets.SEED_MONGO_URI }}
+          # Declares the target a demo; without it the script refuses to run
+          # unattended.
+          DEMO_MODE: "true"
+          # The script shares the server's logger, which loads the server's
+          # config and would otherwise demand the JWT secrets. In development
+          # mode those fall back to placeholders - this job never signs a token,
+          # and the real secrets have no business being copied into CI.
+          NODE_ENV: development

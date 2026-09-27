@@ -161,6 +161,7 @@ Staff page.
 | `npm run seed:grocery` | The original grocery catalogue, if you want it back |
 | `npm run seed:owner` | First owner account |
 | `npm run seed:history` | Backdated trading history — `-- --days=365`, `-- --fresh` |
+| `npm run seed:catchup` | Fill any days with no trading, up to yesterday — `-- --dry-run` to preview. Runs daily on its own (below) |
 | `npm run briefing` | Generate a weekly briefing (for cron) |
 | `npm run reset:demo` | Rebuild the demo database (for cron, heavily guarded) |
 
@@ -245,13 +246,50 @@ optionally `GEMINI_API_KEY` in the dashboard.
 
 **Frontend → Vercel.** Root directory `frontend`. The rewrite in
 `frontend/vercel.json` proxies `/api/*` to the Render service, which is what
-keeps the refresh cookie first-party — check the host there matches your service.
+keeps the refresh cookie first-party.
 
 That proxy is not a convenience. Without it the cookie is third-party, Safari
 blocks it outright and Chrome is phasing it out, and sign-in works locally but
-silently fails in production.
+silently fails in production. For the same reason, leave `VITE_API_BASE_URL`
+unset on Vercel — setting it bypasses the proxy and calls Render cross-origin,
+which reintroduces exactly the problem the proxy exists to avoid.
 
-**Cron jobs**, if you want them:
+Three things about that rewrite, each of which has cost an afternoon:
+
+- **The destination host is not `render.yaml`'s service name.** Render appends
+  random characters when a name is already taken globally, so a blueprint named
+  `smart-inventory-api` can deploy to `smart-inventory-api-n0cd.onrender.com`.
+  Copy it from the dashboard and confirm with `<host>/health`, which should
+  answer `{"status":"ok","db":"connected"}`.
+- **`vercel.json` takes no comments.** Not `//` keys inside a rewrite either —
+  the schema rejects unknown properties and the build fails before it starts,
+  which is why the explanation lives here instead.
+- **`CORS_ORIGIN` on Render must be the Vercel URL exactly**, no trailing slash.
+  Wrong or empty means a healthy backend and a browser that silently refuses
+  every request from it.
+
+**Keeping the demo's history continuous.** The demo shop only trades when
+someone uses it, so every quiet day used to leave a hole: a cliff in the sales
+chart, a forecaster reading a collapse in demand, an anomaly feed flagging every
+product at once. `.github/workflows/demo-catchup.yml` runs `seed:catchup` every
+day at 00:15 UTC (05:45 IST), just after the UTC day that the analytics count
+by has ended. It continues each product's own pattern from the seeded
+generator, keeps the stock ledger consistent, never touches movements that
+really happened, and does nothing at all when there is no gap - so a late or
+repeated run is harmless.
+
+To switch it on, add one repository secret - Settings → Secrets and variables →
+Actions → `SEED_MONGO_URI`, the Atlas string *with* the database name - then
+press "Run workflow" on the Actions tab once to check it. The script refuses to
+run unattended unless `DEMO_MODE=true`, which the workflow sets: it writes
+invented sales, so it must never be pointed at a real shop.
+
+GitHub Actions rather than a Render cron job because it is free (Render's start
+at $1 a month each) and nothing new has to be hosted. Two of its rules matter:
+scheduled runs can start late when GitHub is busy, and in a public repository
+they switch off after 60 days with no commits - GitHub emails a warning first.
+
+**Other cron jobs**, if you want them:
 
 ```
 0 7 * * 1   npm run briefing      # weekly business briefing

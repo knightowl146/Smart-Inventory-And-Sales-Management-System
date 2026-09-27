@@ -15,7 +15,10 @@ const { dayKey, addDaysToKey, findGapDays, planCatchup } = require("./services/s
  *
  *   npm run seed:catchup                 plan, confirm, write
  *   npm run seed:catchup -- --dry-run    plan and print, write nothing
- *   npm run seed:catchup -- --yes        skip the confirmation (for a scheduler)
+ *   npm run seed:catchup -- --yes        skip the confirmation (for a scheduler;
+ *                                        requires DEMO_MODE=true)
+ *
+ * Scheduled daily by .github/workflows/demo-catchup.yml.
  *
  * Against Atlas without editing .env - SEED_MONGO_URI wins over MONGO_URI:
  *
@@ -46,6 +49,22 @@ const confirm = (question) =>
 const pick = (array, index) => array[index % array.length];
 
 const run = async () => {
+  /**
+   * Unattended runs need the database declared a demo.
+   *
+   * This script invents sales. Run by hand, the confirmation prompt is the
+   * safeguard; run on a schedule (--yes), nobody reads the prompt, so the
+   * permission has to be stated in the environment instead - the same
+   * DEMO_MODE switch resetDemo.js requires. A scheduler pointed at a real
+   * shop's database by mistake then fails loudly instead of quietly writing
+   * a week of fictional trading into someone's books.
+   */
+  if (SKIP_PROMPT && process.env.DEMO_MODE !== "true") {
+    throw new Error(
+      "Refusing an unattended run: set DEMO_MODE=true to confirm this database is a demo. This script writes invented sales."
+    );
+  }
+
   const uri = process.env.SEED_MONGO_URI || process.env.MONGO_URI;
   if (!uri) throw new Error("Set MONGO_URI in .env, or SEED_MONGO_URI to target another database.");
 
