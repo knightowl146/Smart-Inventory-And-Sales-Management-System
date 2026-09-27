@@ -18,10 +18,12 @@ const AiCall = require("../../models/AiCall");
  *   - a graceful `null` when any of that fails, so callers degrade to their
  *     deterministic answer instead of returning a 500
  *
- * Model choice: gemini-2.5-flash, which is what the existing
- * stockRecommendation.js already uses. The free tier covers this app's volume,
- * and structured output via responseSchema means a parse failure is a bug
- * rather than a routine occurrence.
+ * Model choice: gemini-3.8-flash by default (GEMINI_MODEL overrides it). It is
+ * Google's recommended stable Flash model and is on the free tier, which covers
+ * this app's volume. The app started on gemini-2.5-flash; Google has since
+ * restricted the 2.5 models to keys that were already using them, so a new key
+ * is refused outright. Structured output via responseSchema means a parse
+ * failure is a bug rather than a routine occurrence.
  */
 
 /**
@@ -39,8 +41,10 @@ const MAX_RETRIES = 1;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 200;
 
-// Published Gemini 2.5 Flash rates per 1M tokens, used only to estimate spend.
-const COST_PER_MILLION = { input: 0.3, output: 2.5 };
+// Published paid-tier rates per 1M tokens for gemini-3.8-flash, used only to
+// estimate spend against the monthly cap - on the free tier nothing is billed.
+// Google has announced these double on 1 January 2027 (to 1.50 / 7.50).
+const COST_PER_MILLION = { input: 0.75, output: 3.75 };
 
 const MONTHLY_BUDGET_USD = Number(process.env.AI_MONTHLY_BUDGET_USD || 5);
 

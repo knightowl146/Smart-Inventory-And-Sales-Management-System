@@ -409,3 +409,83 @@ describe("electronics catalogue", () => {
     expect(quiet.map((product) => product.name)).toEqual([]);
   });
 });
+
+// ── Electronics wording ──────────────────────────────────────────────────────
+
+describe("electronics supplier wording", () => {
+  const { tokensMatch, buildVocabulary, matchLine } = require("../services/ai/invoiceMatcher");
+  const electronics = buildCatalogue().map((product, index) => ({ ...product, _id: `e${index}` }));
+  const vocabulary = buildVocabulary(electronics);
+  const bestFor = (description) => matchLine({ description }, electronics, vocabulary);
+
+  it.each([
+    ["MICRO SD CARD 64 GB", "microsd card 64gb"],
+    ["POWER BANK 20000 MAH", "power bank 20000mah"],
+    ["HDMI CABLE 2 MTR", "hdmi cable 2m"],
+    ["FAST CHARGER 33 WATT", "fast charger 33w"],
+    ["EXTERNAL HDD 2 TB", "external hdd 2tb"],
+    ["SCREEN GUARD 6.5IN", "screen guard 6 5inch"],
+    ["WI-FI 6 ROUTER", "wifi 6 router"],
+    ["PEN DRIVE 32GB", "flash drive 32gb"],
+  ])("normalises %s", (input, expected) => {
+    expect(normalise(input)).toBe(expected);
+  });
+
+  it("does not read a count as a size - '8 in 1' is not 8 inches", () => {
+    expect(normalise("USB-C HUB 8 IN 1")).toBe("usb c hub 8 in 1");
+  });
+
+  it("never treats two different numbers as a typo of each other", () => {
+    // One character apart, and two different power banks.
+    expect(tokensMatch("20000mah", "10000mah")).toBe(false);
+    expect(tokensMatch("64gb", "32gb")).toBe(false);
+    // Words still tolerate a typo.
+    expect(tokensMatch("wireles", "wireless")).toBe(true);
+  });
+
+  it("tells the two power banks apart by capacity", () => {
+    const result = bestFor("POWER BANK 20000 MAH 45W PD");
+    expect(result.status).toBe("matched");
+    expect(result.product.name).toBe("Power Bank 20000mAh");
+  });
+
+  it("ignores spec codes no product mentions, instead of holding them against the match", () => {
+    const result = bestFor("MICRO SD CARD 64 GB CL10");
+    expect(result.status).toBe("matched");
+    expect(result.product.name).toBe("MicroSD Card 64GB");
+  });
+
+  it("does not match a product you do not stock on the strength of one stray digit", () => {
+    // "6" appears in "Wi-Fi 6 Router"; every word of this line appears nowhere.
+    expect(bestFor("TEMPERED GLASS SCREEN GUARD 6.5IN").status).toBe("unmatched");
+  });
+
+  it("still asks when the invoice leaves the size out", () => {
+    const result = bestFor("USB FLASH DRIVE");
+    expect(result.status).toBe("uncertain");
+  });
+
+  it.each([
+    ["exact name in capitals", (name) => name.toUpperCase()],
+    [
+      "units spaced out, supplier style",
+      (name) =>
+        name
+          .toUpperCase()
+          .replace(/(\d)(GB|TB|MAH|W)\b/g, "$1 $2")
+          .replace(/(\d)M\b/g, "$1 MTR")
+          .replace(/WI-FI/g, "WIFI"),
+    ],
+    ["with spec codes appended", (name) => `${name.toUpperCase()} X200 12M WTY`],
+  ])("recognises every product in the catalogue: %s", (_, write) => {
+    // Before this was fixed, appending spec codes left 59 of 76 unrecognised.
+    for (const product of electronics) {
+      const result = bestFor(write(product.name));
+      expect({ line: write(product.name), status: result.status, got: result.product?.name }).toEqual({
+        line: write(product.name),
+        status: "matched",
+        got: product.name,
+      });
+    }
+  });
+});

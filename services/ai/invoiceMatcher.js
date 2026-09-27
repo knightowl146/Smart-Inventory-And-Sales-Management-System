@@ -26,6 +26,16 @@ const UNIT_ALIASES = [
   [/(\d)\s*mls?\b/g, "$1ml"],
   [/(\d)\s*(?:ltrs?|litres?|liters?)\b/g, "$1l"],
 
+  // Electronics sizes, same rule: attached to the number, before any \b rule.
+  // mAh before metres, or "20000 mah" would lose its "ah" to the "m" rule.
+  [/(\d)\s*(?:gb|gigs?|gigabytes?)\b/g, "$1gb"],
+  [/(\d)\s*(?:tb|terabytes?)\b/g, "$1tb"],
+  [/(\d)\s*mah\b/g, "$1mah"],
+  [/(\d)\s*(?:w|watts?)\b/g, "$1w"],
+  [/(\d)\s*(?:mtrs?|metres?|meters?|m)\b/g, "$1m"],
+  // "6.5IN" and "6.5-inch" - but not "8 in 1", which is a count, not a size.
+  [/(\d)\s*(?:inch(?:es)?|in)\b(?!\s*\d)/g, "$1inch"],
+
   // Standalone words.
   [/\bgms?\b/g, "g"],
   [/\bgrams?\b/g, "g"],
@@ -37,6 +47,21 @@ const UNIT_ALIASES = [
   [/\bpkts?\b/g, "packet"],
   [/\bt\/paste\b/g, "toothpaste"],
   [/\bt\/brush\b/g, "toothbrush"],
+
+  // One product, several spellings. Punctuation has already become spaces by
+  // here, so "Wi-Fi" arrives as "wi fi" and "microSD" as "microsd".
+  [/\bwi fi\b/g, "wifi"],
+  [/\bmicro sd\b/g, "microsd"],
+  [/\bpen ?drives?\b/g, "flash drive"],
+  [/\bpowerbanks?\b/g, "power bank"],
+  [/\bsmart watch(es)?\b/g, "smartwatch"],
+  [/\bear ?buds?\b/g, "earbuds"],
+  [/\bhead ?phones?\b/g, "headphones"],
+  [/\bweb ?cams?\b/g, "webcam"],
+  [/\bsound ?bars?\b/g, "soundbar"],
+  [/\bhard ?dis[ck]s?\b/g, "hdd"],
+  [/\badaptors?\b/g, "adapter"],
+  [/\btelevisions?\b/g, "tv"],
 ];
 
 const normalise = (value) => {
@@ -57,7 +82,8 @@ const STOP_WORDS = new Set(["the", "and", "of", "for", "with", "pack", "box", "c
 const tokenise = (value) =>
   normalise(value)
     .split(" ")
-    .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
+    // Single digits stay: "Wi-Fi 6" and "Wi-Fi" are different routers.
+    .filter((token) => (token.length > 1 || /^\d$/.test(token)) && !STOP_WORDS.has(token));
 
 /**
  * Levenshtein distance, iterative with two rows.
@@ -89,6 +115,12 @@ const editDistance = (a, b) => {
 /** Two tokens count as the same word if they are close enough for their length. */
 const tokensMatch = (a, b) => {
   if (a === b) return true;
+
+  // Anything with a number in it must match exactly. "20000mah" and "10000mah"
+  // are one character apart - within the typo allowance for words - and they
+  // are different power banks. A size is a fact, not a spelling.
+  if (/\d/.test(a) || /\d/.test(b)) return false;
+
   if (a.length <= 3 || b.length <= 3) return false;
 
   // One typo in a short word, two in a long one.
@@ -104,8 +136,21 @@ const tokensMatch = (a, b) => {
  * away. An exact SKU match short-circuits to 1 — suppliers who print the SKU
  * have already answered the question.
  */
-const similarity = (invoiceText, product) => {
-  const invoiceTokens = tokenise(invoiceText);
+const similarity = (invoiceText, product, vocabulary = null) => {
+  /**
+   * Spec details the catalogue never mentions are left out of the count.
+   *
+   * Supplier lines carry specs no product name repeats - "45W PD", "CL10",
+   * "AX1800". Such a token cannot point at any product, so all it did was
+   * lower the score of the right one: "POWER BANK 20000 MAH 45W PD" read as
+   * three words out of five and missed. Only tokens containing a number are
+   * dropped this way. Plain words still count against a match, which is what
+   * stops "TEMPERED GLASS SCREEN GUARD 6.5IN" matching the Wi-Fi 6 router on
+   * the strength of a lone digit.
+   */
+  const invoiceTokens = tokenise(invoiceText).filter(
+    (token) => !vocabulary || !/\d/.test(token) || vocabulary.has(token)
+  );
   if (invoiceTokens.length === 0) return 0;
 
   const nameTokens = tokenise(product.name);
@@ -153,7 +198,11 @@ const UNCERTAIN = 0.45;
  * button, because an OCR mistake that silently changes inventory is far worse
  * than one that shows up in a form.
  */
-const matchLine = (line, products) => {
+/** Every token in the catalogue's names and categories. */
+const buildVocabulary = (products) =>
+  new Set(products.flatMap((product) => [...tokenise(product.name), ...tokenise(product.category || "")]));
+
+const matchLine = (line, products, vocabulary = buildVocabulary(products)) => {
   const description = line.description || "";
   const invoiceSku = normalise(line.sku || "");
 
@@ -166,7 +215,7 @@ const matchLine = (line, products) => {
   }
 
   const scored = products
-    .map((product) => ({ product, score: similarity(description, product) }))
+    .map((product) => ({ product, score: similarity(description, product, vocabulary) }))
     .filter((entry) => entry.score > 0.2)
     .sort((a, b) => b.score - a.score)
     .slice(0, 4);
@@ -203,8 +252,10 @@ const matchLine = (line, products) => {
 
 /** Match every line, and summarise how much work is left for the human. */
 const matchInvoice = (lines, products) => {
+  const vocabulary = buildVocabulary(products);
+
   const matched = lines.map((line) => {
-    const result = matchLine(line, products);
+    const result = matchLine(line, products, vocabulary);
 
     return {
       extracted: line,
@@ -247,6 +298,7 @@ module.exports = {
   similarity,
   matchLine,
   matchInvoice,
+  buildVocabulary,
   CONFIDENT,
   UNCERTAIN,
 };

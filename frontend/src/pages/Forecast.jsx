@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { getProducts } from "../api/products";
+import { getAllProducts } from "../api/products";
 import { getProductForecast, getForecastAccuracy } from "../api/intelligence";
 import StatCard from "../components/StatCard";
 import Spinner from "../components/Spinner";
@@ -69,9 +69,8 @@ const Forecast = () => {
   const [horizon, setHorizon] = useState(30);
 
   useEffect(() => {
-    getProducts({ limit: 100 })
-      .then((response) => {
-        const list = response.data.data ?? [];
+    getAllProducts()
+      .then((list) => {
         setProducts(list);
         if (list.length > 0) setSelected(list[0]._id);
       })

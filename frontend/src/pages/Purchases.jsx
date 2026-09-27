@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, purchaseProduct } from "../api/products";
+import { getAllProducts, purchaseProduct } from "../api/products";
 import { getSuppliers } from "../api/suppliers";
 import { getMovements } from "../api/movements";
 import DataTable from "../components/DataTable";
@@ -22,11 +22,8 @@ const Purchases = () => {
   const [successMessage, setSuccessMessage] = useState(null);
 
   const loadOptions = async () => {
-    const [productsRes, suppliersRes] = await Promise.all([
-      getProducts({ limit: 100 }),
-      getSuppliers(),
-    ]);
-    setProducts(productsRes.data.data);
+    const [productList, suppliersRes] = await Promise.all([getAllProducts(), getSuppliers()]);
+    setProducts(productList);
     setSuppliers(suppliersRes.data.data || []);
   };
 

@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import apiClient from "../api/client";
-import { getProducts } from "../api/products";
+import { getAllProducts, purchaseProduct } from "../api/products";
 import { getSuppliers } from "../api/suppliers";
-import { purchaseProduct } from "../api/products";
 import Button from "../components/Button";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
+import NewProductForm from "../components/NewProductForm";
+import { draftFromLine } from "../utils/newProductDraft";
 
-const STATUS_BADGE = { matched: "healthy", uncertain: "warning", unmatched: "danger" };
+const STATUS_BADGE = { matched: "healthy", uncertain: "warning", unmatched: "danger", created: "healthy" };
 
 const STATUS_LABEL = {
   matched: "matched",
   uncertain: "check this",
   unmatched: "pick a product",
+  created: "new product",
 };
 
 /**
@@ -47,9 +49,18 @@ const ScanInvoice = () => {
       .then((response) => setSuppliers(response.data.data ?? []))
       .catch(() => setSuppliers([]));
 
-    getProducts({ limit: 200 })
-      .then((response) => setProducts(response.data.data ?? []))
-      .catch(() => setProducts([]));
+    // Every product, not one page of them - and a failure is shown, not
+    // swallowed. An empty list here made every dropdown read "Not in the
+    // catalogue" while the real match sat underneath it, so Record would have
+    // added stock the screen said it was skipping.
+    getAllProducts()
+      .then(setProducts)
+      .catch(() => {
+        setProducts([]);
+        setError(
+          "Your product list could not be loaded, so matched lines cannot be shown. Reload the page before recording anything."
+        );
+      });
   }, []);
 
   // Revoke the object URL when the preview changes or the page unmounts,
@@ -92,6 +103,7 @@ const ScanInvoice = () => {
       setRows(
         data.lines.map((line) => ({
           productId: line.product?.id ?? "",
+          productName: line.product?.name ?? "",
           quantity: line.extracted.quantity,
           unitPrice: line.extracted.unitPrice,
           description: line.extracted.description,
@@ -101,6 +113,7 @@ const ScanInvoice = () => {
           // Unmatched lines start switched off - the owner opts them in rather
           // than having to notice and opt out.
           include: line.status !== "unmatched",
+          addingProduct: false,
         }))
       );
     } catch (err) {
@@ -112,6 +125,19 @@ const ScanInvoice = () => {
 
   const update = (index, patch) =>
     setRows((previous) => previous.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  // A line turned into a new catalogue product: add it to the pickers and
+  // select it, so recording the scan brings its stock in like any other line.
+  const productCreated = (index, product) => {
+    setProducts((previous) => [...previous, product]);
+    update(index, {
+      productId: product._id,
+      productName: product.name,
+      status: "created",
+      include: true,
+      addingProduct: false,
+    });
+  };
 
   const record = async () => {
     const selected = rows.filter((row) => row.include && row.productId && row.quantity > 0);
@@ -297,7 +323,8 @@ const ScanInvoice = () => {
                 </thead>
                 <tbody>
                   {rows.map((row, index) => (
-                    <tr key={index}>
+                    <Fragment key={index}>
+                    <tr>
                       <td>
                         <input
                           id={`include-${index}`}
@@ -312,7 +339,7 @@ const ScanInvoice = () => {
                         <span className={`badge badge--${STATUS_BADGE[row.status]}`}>
                           {STATUS_LABEL[row.status]}
                         </span>
-                        {row.status !== "unmatched" && (
+                        {(row.status === "matched" || row.status === "uncertain") && (
                           <span className="field-hint">
                             {" "}
                             {Math.round(row.confidence * 100)}%
@@ -326,12 +353,32 @@ const ScanInvoice = () => {
                           onChange={(event) => update(index, { productId: event.target.value })}
                         >
                           <option value="">Not in the catalogue — skip</option>
+                          {/*
+                            Belt and braces: if the chosen product is somehow not
+                            in the loaded list, still show it by name rather than
+                            letting the dropdown display "skip" over a real choice.
+                          */}
+                          {row.productId &&
+                            !products.some((product) => product._id === row.productId) && (
+                              <option value={row.productId}>{row.productName || "Matched product"}</option>
+                            )}
                           {products.map((product) => (
                             <option key={product._id} value={product._id}>
                               {product.name}
                             </option>
                           ))}
                         </select>
+                        {!row.productId && !row.addingProduct && (
+                          <div>
+                            <button
+                              type="button"
+                              className="scan__add-new"
+                              onClick={() => update(index, { addingProduct: true })}
+                            >
+                              + Add as new product
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td>
                         <input
@@ -355,6 +402,20 @@ const ScanInvoice = () => {
                         />
                       </td>
                     </tr>
+                    {row.addingProduct && (
+                      <tr className="scan__new-product-row">
+                        <td colSpan={5}>
+                          <NewProductForm
+                            idPrefix={`new-${index}`}
+                            initial={draftFromLine(row, result.invoice, products)}
+                            products={products}
+                            onCreated={(product) => productCreated(index, product)}
+                            onCancel={() => update(index, { addingProduct: false })}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

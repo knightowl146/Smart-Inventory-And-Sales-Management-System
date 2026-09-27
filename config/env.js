@@ -8,7 +8,9 @@ const env = cleanEnv(process.env, {
   // Which Gemini model to call. A setting rather than a constant because Google
   // retires model IDs on its own schedule; when it does, this is the one field
   // to change. The Ask page names the model if the one set here is unavailable.
-  GEMINI_MODEL: str({ default: 'gemini-2.5-flash' }),
+  // gemini-2.5-flash was the original; Google now refuses the 2.5 models to keys
+  // that were not already using them.
+  GEMINI_MODEL: str({ default: 'gemini-3.8-flash' }),
 
   // Comma-separated list of allowed frontend origins, e.g. "https://app.example.com,https://admin.example.com"
   // Left empty in development (falls back to allow-all so local Vite ports just work).

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getProducts, sellProduct } from "../api/products";
+import { getAllProducts, sellProduct } from "../api/products";
 import { getCustomers } from "../api/customers";
 import { getMovements } from "../api/movements";
 import DataTable from "../components/DataTable";
@@ -22,11 +22,8 @@ const Sales = () => {
   const [successMessage, setSuccessMessage] = useState(null);
 
   const loadOptions = async () => {
-    const [productsRes, customersRes] = await Promise.all([
-      getProducts({ limit: 100 }),
-      getCustomers(),
-    ]);
-    setProducts(productsRes.data.data);
+    const [productList, customersRes] = await Promise.all([getAllProducts(), getCustomers()]);
+    setProducts(productList);
     setCustomers(customersRes.data.customers || []);
   };
 
