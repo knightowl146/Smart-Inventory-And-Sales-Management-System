@@ -421,7 +421,7 @@ describe("POST /api/ai/invoice/extract", () => {
     expect(res.body.message).toMatch(/invoice/i);
   });
 
-  it("415s a file that is not an image", async () => {
+  it("415s a file that is neither an image nor a PDF", async () => {
     const res = await asOwner(app)
       .post("/api/ai/invoice/extract")
       .attach("invoice", Buffer.from("not a picture"), {
@@ -430,6 +430,19 @@ describe("POST /api/ai/invoice/extract", () => {
       });
 
     expect(res.status).toBe(415);
+  });
+
+  it("lets a PDF through the upload filter - most supplier invoices are PDFs", async () => {
+    const res = await asOwner(app)
+      .post("/api/ai/invoice/extract")
+      .attach("invoice", Buffer.from("%PDF-1.4 minimal"), {
+        filename: "invoice.pdf",
+        contentType: "application/pdf",
+      });
+
+    // Past the filter: what stops it now is the missing API key in tests.
+    expect(res.status).not.toBe(415);
+    expect(res.status).toBe(503);
   });
 
   it("503s with a useful message when no API key is configured", async () => {

@@ -302,3 +302,51 @@ describe("renderReceipt", () => {
     expect(code).not.toMatch(/\bmargin\b/);
   });
 });
+
+// ── Diagnosing a failed model call ───────────────────────────────────────────
+
+const { classifyAiError } = require("../services/ai/client");
+
+describe("classifyAiError", () => {
+  /**
+   * Every one of these used to surface as "could not be reached". They have
+   * different fixes - change a key, wait, move a server, change a setting - so
+   * sorting them wrongly is worse than not sorting them at all. The strings are
+   * the shapes the Gemini API actually returns.
+   */
+  it.each([
+    ["API key not valid. Please pass a valid API key. [API_KEY_INVALID]", "key"],
+    ["[403 Forbidden] Method doesn't allow unregistered callers", "key"],
+    ["PERMISSION_DENIED: Your API key was reported as leaked", "key"],
+    ["[429 Too Many Requests] RESOURCE_EXHAUSTED: You exceeded your current quota", "quota"],
+    ["User location is not supported for the API use.", "region"],
+    ["This model models/gemini-2.5-flash is no longer available.", "model"],
+    ["[404 Not Found] models/gemini-x is not found for API version v1beta", "model"],
+    ["AI request timed out", "transient"],
+    ["[503 Service Unavailable] The model is overloaded", "transient"],
+    ["Monthly AI budget of $5 reached", "budget"],
+    ["something nobody has seen before", "unknown"],
+  ])("%s -> %s", (message, expected) => {
+    expect(classifyAiError(message)).toBe(expected);
+  });
+
+  it("does not mistake a region block for a retired model", () => {
+    // Both contain "is not supported"; only one is fixed by changing the model.
+    expect(classifyAiError("User location is not supported for the API use.")).toBe("region");
+  });
+});
+
+// ── Invoice formats ──────────────────────────────────────────────────────────
+
+describe("invoice reader formats", () => {
+  const { SUPPORTED_TYPES } = require("../services/ai/invoiceReader");
+
+  it("accepts PDFs - most supplier invoices arrive as one", () => {
+    // Images-only meant printing an emailed invoice to photograph it.
+    expect(SUPPORTED_TYPES).toContain("application/pdf");
+  });
+
+  it("still accepts phone photos", () => {
+    expect(SUPPORTED_TYPES).toEqual(expect.arrayContaining(["image/jpeg", "image/png", "image/webp"]));
+  });
+});

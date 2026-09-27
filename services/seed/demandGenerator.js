@@ -214,6 +214,39 @@ const generateDailyDemand = (sku, days, options = {}) => {
 };
 
 /**
+ * How much to order, and when, for one product.
+ *
+ * Shared by the original history seeder and the catch-up script, so a shop
+ * that has been topped up looks like it was run by the same person throughout
+ * rather than switching purchasing policy on the day the gap was filled.
+ *
+ * Must derive from the same profile the sales came from, or restocking is
+ * sized for a demand rate the shop does not actually have.
+ *
+ * @returns {{targetCover: number, reorderLevel: number}}
+ */
+const restockPolicyFor = (sku, { sellingPrice, coverDays = 21 } = {}) => {
+  const profile = profileFor(sku, { sellingPrice });
+
+  /**
+   * A floor on the delivery size, so a slow seller is not restocked one unit
+   * at a time - but a price-aware floor. Ten is a sensible minimum carton of
+   * cables and an absurd minimum order of 88,000 workstations: it would put
+   * nearly a million rupees of stock on the shelf for a product that sells one
+   * a fortnight, and every capital-tied-up figure in the reports would be
+   * wrong.
+   */
+  const price = Number(sellingPrice) || 0;
+  const minCover = price > 25000 ? 3 : price > 8000 ? 5 : 10;
+
+  return {
+    targetCover: Math.max(minCover, Math.ceil(profile.baseRate * coverDays)),
+    // Reorder when what is left would not cover about three days.
+    reorderLevel: Math.ceil(profile.baseRate * 3),
+  };
+};
+
+/**
  * Purchases that keep stock positive across the generated sales.
  *
  * Walks the sales forward, and whenever projected stock would drop below a
@@ -230,25 +263,10 @@ const generateRestocks = (
   { startingStock = 0, coverDays = 21, sellingPrice } = {}
 ) => {
   const random = createRandom(hashString(`${sku}:restock`));
-  // Must use the same profile the sales were generated from, or restocking is
-  // sized for a demand rate the shop does not actually have.
-  const profile = profileFor(sku, { sellingPrice });
+  const { targetCover, reorderLevel } = restockPolicyFor(sku, { sellingPrice, coverDays });
 
   const restocks = [];
   let stock = startingStock;
-
-  /**
-   * A floor on the delivery size, so a slow seller is not restocked one unit
-   * at a time - but a price-aware floor. Ten is a sensible minimum carton of
-   * cables and an absurd minimum order of 88,000 workstations: it would put
-   * nearly a million rupees of stock on the shelf for a product that sells one
-   * a fortnight, and every capital-tied-up figure in the reports would be
-   * wrong.
-   */
-  const price = Number(sellingPrice) || 0;
-  const minCover = price > 25000 ? 3 : price > 8000 ? 5 : 10;
-
-  const targetCover = Math.max(minCover, Math.ceil(profile.baseRate * coverDays));
 
   // An opening delivery, so the shop does not begin at zero.
   restocks.push({
@@ -259,7 +277,7 @@ const generateRestocks = (
   stock += targetCover;
 
   for (const sale of sales) {
-    if (stock - sale.quantity < Math.ceil(profile.baseRate * 3)) {
+    if (stock - sale.quantity < reorderLevel) {
       const quantity = targetCover + Math.round(random() * targetCover * 0.3);
 
       restocks.push({
@@ -283,6 +301,7 @@ module.exports = {
   priceDemandBand,
   poissonSample,
   profileFor,
+  restockPolicyFor,
   generateDailyDemand,
   generateRestocks,
   WEEKDAY_FACTORS,

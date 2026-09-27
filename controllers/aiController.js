@@ -2,7 +2,13 @@ const Briefing = require("../models/Briefing");
 const AiCall = require("../models/AiCall");
 const { ask } = require("../services/ai/ask");
 const { generateBriefing } = require("../services/ai/briefing");
-const { isConfigured, MONTHLY_BUDGET_USD, monthlySpend } = require("../services/ai/client");
+const {
+  isConfigured,
+  MONTHLY_BUDGET_USD,
+  MODEL,
+  monthlySpend,
+  getLastFailure,
+} = require("../services/ai/client");
 const audit = require("../services/auditService");
 
 const MAX_QUESTION_LENGTH = 500;
@@ -47,6 +53,9 @@ const askQuestion = async (req, res, next) => {
         toolCalls: result.toolCalls,
         refused: result.refused,
         assistantAvailable: result.available,
+        // Owners only (ask.js leaves it null otherwise): key | quota | region |
+        // model | transient | budget | unknown. Lets the page say what is wrong.
+        failureReason: result.failureReason ?? null,
       },
     });
   } catch (err) {
@@ -63,6 +72,10 @@ const getAiStatus = async (req, res, next) => {
       success: true,
       data: {
         configured: isConfigured(),
+        model: MODEL,
+        // The most recent failure, so a broken assistant can be diagnosed from
+        // the app instead of from the hosting logs. Null once a call succeeds.
+        lastFailure: getLastFailure(),
         monthlyBudgetUsd: MONTHLY_BUDGET_USD,
         estimatedSpendThisMonthUsd: Number(spent.toFixed(4)),
         budgetRemainingPercent: Number(

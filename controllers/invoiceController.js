@@ -23,7 +23,7 @@ const extractInvoice = async (req, res, next) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Attach an image of the invoice as the 'invoice' field.",
+        message: "Attach the invoice - a PDF or a photo - as the 'invoice' field.",
       });
     }
 

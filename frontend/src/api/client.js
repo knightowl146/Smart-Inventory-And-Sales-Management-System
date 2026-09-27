@@ -1,12 +1,23 @@
 import axios from "axios";
 
 /**
- * Default to the same-origin /api path. Vite proxies it in development and
- * Vercel rewrites it in production, so the browser only ever talks to one
- * origin - which is what lets the refresh cookie stay a first-party,
- * SameSite=Lax cookie instead of a third-party one Safari would drop.
+ * Always the same-origin /api path in a production build. Vite proxies it in
+ * development and Vercel rewrites it in production, so the browser only ever
+ * talks to one origin - which is what lets the refresh cookie stay a
+ * first-party, SameSite=Lax cookie instead of a third-party one browsers drop.
+ *
+ * This used to honour VITE_API_BASE_URL in production too, and that single
+ * environment variable caused two separate bugs on the live site. Set to the
+ * backend's own URL, it sent every request cross-origin: the refresh cookie was
+ * never attached, so a page reload always logged you out; and any Vercel URL
+ * other than the one in CORS_ORIGIN - a per-deployment link from the dashboard,
+ * say - had its sign-in blocked by CORS, which the browser reports as a bare
+ * "Network Error". Both vanish when the browser only ever sees one origin, so a
+ * production build no longer reads the variable at all. It is still respected
+ * in development, where pointing at another local backend is a reasonable thing
+ * to want and nothing depends on the cookie being first-party.
  */
-const baseURL = import.meta.env.VITE_API_BASE_URL || "/api";
+const baseURL = import.meta.env.PROD ? "/api" : import.meta.env.VITE_API_BASE_URL || "/api";
 
 const apiClient = axios.create({
   baseURL,

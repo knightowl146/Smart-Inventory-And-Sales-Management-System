@@ -1,4 +1,4 @@
-const { generate, isConfigured } = require("./client");
+const { generate, isConfigured, getLastFailure, describeLastFailure } = require("./client");
 const { toolDeclarationsFor } = require("./tools");
 const { executeTool } = require("./toolExecutor");
 
@@ -15,6 +15,28 @@ const { executeTool } = require("./toolExecutor");
  */
 
 const MAX_TOOL_ROUNDS = 4;
+
+const FALLBACK = "The underlying figures are on the Analytics and Reports pages.";
+
+/**
+ * What to say when the model call failed, depending on why and who is asking.
+ *
+ * The owner runs the shop and the server, so they get the actual cause and
+ * what fixes it - "could not be reached" for every failure had them guessing
+ * between a revoked key, a spent quota and a retired model, which have nothing
+ * in common but the symptom. An employee cannot change server settings, so they
+ * get the plain version: the configuration detail is no use to them and not
+ * theirs to see.
+ */
+const unavailableMessage = (user) => {
+  const explanation = describeLastFailure();
+
+  if (user.role !== "owner" || !explanation) {
+    return `The assistant could not be reached just now. ${FALLBACK}`;
+  }
+
+  return `${explanation} ${FALLBACK}`;
+};
 
 const systemInstruction = (user, today) => `
 You are the analyst for a shop's inventory and sales system. You are talking to
@@ -81,8 +103,8 @@ const ask = async (question, user) => {
     if (!response) {
       return {
         available: true,
-        answer:
-          "The assistant could not be reached just now. The underlying figures are on the Analytics and Reports pages.",
+        answer: unavailableMessage(user),
+        failureReason: user.role === "owner" ? getLastFailure()?.reason ?? null : null,
         toolCalls,
         refused,
       };
@@ -138,4 +160,4 @@ const ask = async (question, user) => {
   };
 };
 
-module.exports = { ask, MAX_TOOL_ROUNDS };
+module.exports = { ask, MAX_TOOL_ROUNDS, unavailableMessage };

@@ -7,14 +7,15 @@ const errorHandler = (err, req, res, next) => {
   // Upload failures arrive here as multer errors with no statusCode, which
   // would otherwise surface as an opaque 500 for something the person can fix
   // themselves - a photo that is simply too large.
+  //
+  // A rejected file type needs no case here: the upload filter sets
+  // statusCode 415 on the error it raises.
   if (err.code === 'LIMIT_FILE_SIZE') {
     statusCode = 413;
-    message = 'That image is too large. Keep it under 8MB.';
+    message = 'That file is too large. Keep it under 8MB.';
   } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
     statusCode = 400;
-    message = 'Attach exactly one image, as the "invoice" field.';
-  } else if (err.message === 'Only JPEG, PNG or WebP images are accepted.') {
-    statusCode = 415;
+    message = 'Attach exactly one file, as the "invoice" field.';
   }
 
   if (!statusCode) {

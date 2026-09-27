@@ -24,7 +24,16 @@ const AiCall = require("../../models/AiCall");
  * rather than a routine occurrence.
  */
 
-const MODEL = "gemini-2.5-flash";
+/**
+ * The model, as configuration rather than code.
+ *
+ * Google retires model IDs on its own schedule - and has at least once switched
+ * this one off by accident before its published date. When that happens every
+ * AI feature starts failing at once, and with the name hard-coded the fix is a
+ * code change, a commit and a redeploy. As a setting it is one field in the
+ * hosting dashboard.
+ */
+const MODEL = env.GEMINI_MODEL;
 const TIMEOUT_MS = 20000;
 const MAX_RETRIES = 1;
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -117,6 +126,72 @@ const recordCall = (entry) => {
   });
 };
 
+// ── Why the last call failed ─────────────────────────────────────────────────
+
+/**
+ * The reason the most recent call gave up.
+ *
+ * `generate` returns null on failure so callers can degrade gracefully, and
+ * that is right - but on its own it throws the reason away, which left every
+ * failure reading "could not be reached" whether the key had been revoked, the
+ * free quota was spent, or the model had been retired. Those have three
+ * completely different fixes. Keeping the last one here lets a caller tell the
+ * owner which it was, without changing what `generate` returns.
+ */
+let lastFailure = null;
+
+const noteFailure = (feature, message) => {
+  lastFailure = { feature, message, reason: classifyAiError(message), at: new Date() };
+};
+
+const getLastFailure = () => lastFailure;
+
+/**
+ * The last failure as one sentence an owner can act on, or null if there is
+ * nothing to explain. Shared by every feature, so the assistant and the invoice
+ * reader give the same diagnosis for the same fault.
+ */
+const describeLastFailure = () => {
+  if (!lastFailure) return null;
+
+  const explanations = {
+    key: "Gemini rejected the API key. Check GEMINI_API_KEY in the server's environment - it may have been mistyped, revoked, or restricted to other APIs.",
+    quota: "The Gemini quota is used up for now. Free-tier limits reset on Google's schedule; try again later, or enable billing on the key.",
+    region: "Gemini does not serve the region this server runs in. That is decided by the hosting location, not the code.",
+    model: `The model "${MODEL}" is not available to this key. Set GEMINI_MODEL in the server's environment to a current model.`,
+    transient: "Gemini did not answer in time. This is usually momentary - try again.",
+    budget: `This month's AI budget of $${MONTHLY_BUDGET_USD} has been reached.`,
+  };
+
+  return (
+    explanations[lastFailure.reason] ??
+    `Gemini returned an error the app does not recognise: "${String(lastFailure.message).slice(0, 160)}".`
+  );
+};
+
+/**
+ * Sort a provider error into something a person can act on.
+ *
+ * Matches on the codes and phrases the Gemini API actually returns. Anything
+ * unrecognised is "unknown" rather than guessed at - a wrong diagnosis sends
+ * someone to fix the wrong thing.
+ */
+const classifyAiError = (message = "") => {
+  const text = String(message);
+
+  if (/budget/i.test(text)) return "budget";
+  if (/API[_ ]?key|API_KEY_INVALID|UNAUTHENTICATED|PERMISSION_DENIED|\b40[13]\b/i.test(text)) return "key";
+  if (/RESOURCE_EXHAUSTED|quota|rate.?limit|\b429\b/i.test(text)) return "quota";
+  // Before the model check: "User location is not supported" would otherwise
+  // match "is not supported" and send someone off to change a model name that
+  // was never the problem. It depends on where the server runs, not the code.
+  if (/location is not supported|user location/i.test(text)) return "region";
+  if (/no longer available|not found|NOT_FOUND|is not supported|\b404\b/i.test(text)) return "model";
+  if (/timed out|ETIMEDOUT|ECONNRESET|fetch failed|UNAVAILABLE|overloaded|\b50[0-4]\b/i.test(text)) return "transient";
+
+  return "unknown";
+};
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const withTimeout = (promise, ms) =>
@@ -158,6 +233,7 @@ const generate = async ({ contents, config = {}, feature, userId = null, cacheab
     logger.warn(
       `AI monthly budget of $${MONTHLY_BUDGET_USD} reached - "${feature}" is degrading to its deterministic path.`
     );
+    noteFailure(feature, `Monthly AI budget of $${MONTHLY_BUDGET_USD} reached`);
     return null;
   }
 
@@ -188,6 +264,8 @@ const generate = async ({ contents, config = {}, feature, userId = null, cacheab
 
       // A fresh call changes the running total; drop the cached figure.
       budgetCheckedAt = 0;
+      // And a success means whatever was wrong before no longer is.
+      lastFailure = null;
 
       if (cacheable) writeCache(key, response);
       return response;
@@ -196,6 +274,7 @@ const generate = async ({ contents, config = {}, feature, userId = null, cacheab
       logger.error(`AI call "${feature}" failed (attempt ${attempt + 1}): ${err.message}`);
 
       if (isLast) {
+        noteFailure(feature, err.message);
         recordCall({
           feature,
           model: MODEL,
@@ -243,4 +322,7 @@ module.exports = {
   monthlySpend,
   clearCache,
   estimateCost,
+  classifyAiError,
+  getLastFailure,
+  describeLastFailure,
 };

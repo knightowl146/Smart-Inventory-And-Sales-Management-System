@@ -190,7 +190,8 @@ const ScanInvoice = () => {
 
       <div className="panel">
         <p className="field-hint">
-          Photograph a supplier invoice or delivery note. The reader extracts the
+          Upload a supplier invoice or delivery note - the PDF they emailed, or a
+          photo of a paper one. The reader extracts the
           line items and matches them to your catalogue; you check the numbers and
           confirm. Nothing is added to stock until you press Record.
         </p>
@@ -200,7 +201,7 @@ const ScanInvoice = () => {
             id="invoice-file"
             ref={fileInput}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="application/pdf,.pdf,image/jpeg,image/png,image/webp"
             onChange={(event) => choose(event.target.files?.[0])}
           />
           <Button onClick={scan} disabled={!file || scanning}>
@@ -208,10 +209,22 @@ const ScanInvoice = () => {
           </Button>
         </div>
 
-        {preview && (
+        {/*
+          A photo previews as itself. A PDF gets its name and size instead of an
+          embedded viewer: inline PDF rendering is unreliable on phones, where
+          people are most likely to be scanning, and the point of the preview is
+          only to confirm the right file was picked.
+        */}
+        {preview && file?.type !== "application/pdf" && (
           <div className="scan__preview">
             <img src={preview} alt="The invoice about to be read" />
           </div>
+        )}
+
+        {file?.type === "application/pdf" && (
+          <p className="field-hint">
+            PDF selected: <strong>{file.name}</strong> ({Math.max(1, Math.round(file.size / 1024))} KB)
+          </p>
         )}
 
         {scanning && <Spinner label="Reading the invoice…" />}

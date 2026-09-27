@@ -7,7 +7,8 @@ const ai = new GoogleGenAI({
 
 const generateStockRecommendations = async (metrics) => {
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    // Same setting as every other AI feature, so a model retirement is one change.
+    model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
 
     contents: `
 You are an inventory management AI.

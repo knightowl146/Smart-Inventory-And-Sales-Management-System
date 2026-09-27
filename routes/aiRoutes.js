@@ -15,21 +15,31 @@ const { requireAuth } = require("../middlewares/auth");
 const { can } = require("../middlewares/permissions");
 
 /**
- * Invoice images are held in memory and handed straight to the model - they are
+ * Invoices are held in memory and handed straight to the model - they are
  * never written to disk. Nothing needs them after the response, and a server
  * that does not store uploads cannot leak them.
  *
- * 8MB is generous for a phone photo of a single page and small enough that a
+ * Photographs and PDFs both. Most suppliers email invoices as PDFs rather than
+ * handing over paper, so an images-only reader made the owner print the thing
+ * and photograph it, which is the opposite of saving effort. Gemini reads PDFs
+ * natively, text layer and all, so nothing is converted here.
+ *
+ * 8MB is generous for a phone photo or a few-page PDF and small enough that a
  * malicious upload cannot exhaust memory.
  */
-const ACCEPTED_IMAGE = /^image\/(jpeg|png|webp|heic|heif)$/;
+const ACCEPTED_INVOICE = /^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/;
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, callback) => {
-    if (!ACCEPTED_IMAGE.test(file.mimetype)) {
-      return callback(new Error("Only JPEG, PNG or WebP images are accepted."));
+    if (!ACCEPTED_INVOICE.test(file.mimetype)) {
+      // The status travels on the error itself. The error handler used to
+      // recognise this rejection by its exact wording, so rewording the message
+      // silently turned a 415 into a 500.
+      const error = new Error("Upload a PDF, or a JPEG, PNG or WebP photo of the invoice.");
+      error.statusCode = 415;
+      return callback(error);
     }
     return callback(null, true);
   },

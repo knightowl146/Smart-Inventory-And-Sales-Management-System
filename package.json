@@ -15,6 +15,7 @@
     "seed:owner": "node seedOwner.js",
     "briefing": "node generateBriefingJob.js",
     "seed:history": "node seedHistory.js",
+    "seed:catchup": "node seedCatchup.js",
     "reset:demo": "node resetDemo.js"
   },
   "overrides": {

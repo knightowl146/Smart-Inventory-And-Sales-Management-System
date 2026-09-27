@@ -1,9 +1,9 @@
-const { generate, isConfigured } = require("./client");
+const { generate, isConfigured, describeLastFailure } = require("./client");
 
 /**
- * Reading a supplier invoice from a photograph.
+ * Reading a supplier invoice from a photograph or a PDF.
  *
- * Gemini 2.5 Flash is multimodal, so the image goes in as inline data and comes
+ * The model is multimodal and reads PDFs directly, so the file goes in as inline data and comes
  * back as structured JSON against a fixed schema — the same responseSchema
  * pattern the existing stock-recommendation feature uses, which means a parse
  * failure here is a bug rather than a routine occurrence.
@@ -57,13 +57,21 @@ Rules:
 - Leave sku empty unless a product code is actually printed on the line.
 - invoiceDate as YYYY-MM-DD if you can determine it; otherwise leave it empty.
 - Skip non-item rows: subtotals, tax lines, delivery charges, totals.
+- If the document has several pages, read line items from all of them.
 - Set readable to false if the image is too blurry, too dark, cropped, or is
   not an invoice at all. Say why in notes. An empty lines array with
   readable:false is a correct answer — a guessed one is not.
 - Never invent a line, a quantity or a price that is not visible on the page.
 `.trim();
 
-const SUPPORTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+const SUPPORTED_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+];
 
 /**
  * @param {Buffer} imageBuffer
@@ -87,7 +95,7 @@ const readInvoice = async (imageBuffer, mimeType, userId = null) => {
       available: true,
       readable: false,
       data: null,
-      error: `Unsupported image type "${mimeType}". Use JPEG, PNG or WebP.`,
+      error: `Unsupported file type "${mimeType}". Upload a PDF, or a JPEG, PNG or WebP photo.`,
     };
   }
 
@@ -104,8 +112,8 @@ const readInvoice = async (imageBuffer, mimeType, userId = null) => {
     config: { responseMimeType: "application/json", responseSchema: INVOICE_SCHEMA, temperature: 0 },
     feature: "invoice_ocr",
     userId,
-    // Images are the expensive call here, and the same photograph uploaded
-    // twice should not be billed twice.
+    // Documents are the expensive call here, and the same file uploaded twice
+    // should not be billed twice.
     cacheable: true,
   });
 
@@ -114,7 +122,8 @@ const readInvoice = async (imageBuffer, mimeType, userId = null) => {
       available: true,
       readable: false,
       data: null,
-      error: "The invoice could not be read just now. Try again, or add the purchase manually.",
+      // Only owners can reach this endpoint, so the actual cause is theirs to see.
+      error: `${describeLastFailure() ?? "The invoice could not be read just now."} You can add the purchase manually meanwhile.`,
     };
   }
 

@@ -5,6 +5,10 @@ const env = cleanEnv(process.env, {
   PORT: port({ default: 3000 }),
   MONGO_URI: str({ devDefault: 'mongodb://localhost:27017/inventorydb' }), // required in production, defaults locally for dev/test
   GEMINI_API_KEY: str({ default: '' }), // Optional
+  // Which Gemini model to call. A setting rather than a constant because Google
+  // retires model IDs on its own schedule; when it does, this is the one field
+  // to change. The Ask page names the model if the one set here is unavailable.
+  GEMINI_MODEL: str({ default: 'gemini-2.5-flash' }),
 
   // Comma-separated list of allowed frontend origins, e.g. "https://app.example.com,https://admin.example.com"
   // Left empty in development (falls back to allow-all so local Vite ports just work).
