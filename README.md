@@ -122,8 +122,9 @@ A small shop, say an electronics store with a few dozen to a few hundred product
 
 | Analytics | Reports |
 |---|---|
-| ![Analytics: sales](docs/screenshots/analytics-sales.png) | ![Reports](docs/screenshots/reports.png) |
-| ![Analytics: inventory](docs/screenshots/analytics-inventory.png) | ![Excel export: profit by product](docs/screenshots/report-excel-export.png) |
+| ![Analytics: sales](docs/screenshots/analytics-sales.png) | ![Reports: profit and loss by category](docs/screenshots/reports.png) |
+| ![Analytics: profitability by product](docs/screenshots/analytics-profitability.png) | ![Excel export: profit by product](docs/screenshots/report-excel-export.png) |
+| ![Analytics: inventory](docs/screenshots/analytics-inventory.png) | ![Analytics: purchases](docs/screenshots/analytics-purchases.png) |
 
 ### 3. Keeping sensitive figures away from the counter: roles and security
 
@@ -182,12 +183,12 @@ With product names written the way suppliers print them, the matcher recognises 
 - **Receipts:** a PDF receipt for any sale.
 
 <details>
-<summary><b>More screenshots:</b> sales, purchases, stock ledger, receipt, purchase analytics</summary>
+<summary><b>More screenshots:</b> sales, purchases, stock ledger, dashboard lists, receipt</summary>
 
 | | |
 |---|---|
 | ![Sales](docs/screenshots/sales.png) | ![Purchases](docs/screenshots/purchases.png) |
-| ![Stock movements](docs/screenshots/stock-movements.png) | ![Analytics: purchases](docs/screenshots/analytics-purchases.png) |
+| ![Stock movements](docs/screenshots/stock-movements.png) | ![Dashboard: needs attention and top sellers](docs/screenshots/dashboard-panels.png) |
 
 <img src="docs/screenshots/receipt.png" alt="Sale receipt" width="260">
 
