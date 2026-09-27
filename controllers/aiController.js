@@ -54,7 +54,8 @@ const askQuestion = async (req, res, next) => {
         refused: result.refused,
         assistantAvailable: result.available,
         // Owners only (ask.js leaves it null otherwise): key | quota | region |
-        // model | transient | budget | unknown. Lets the page say what is wrong.
+        // model | timeout | overloaded | budget | unknown. Lets the page
+        // say what is wrong.
         failureReason: result.failureReason ?? null,
       },
     });

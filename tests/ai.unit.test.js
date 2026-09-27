@@ -100,6 +100,14 @@ describe("executeTool", () => {
     expect(result.refused).toBe(true);
   });
 
+  it("refuses profit by product for an employee, like every other profit figure", async () => {
+    const result = await executeTool("get_profit_by_product", { days: 30 }, employee);
+
+    expect(result.refused).toBe(true);
+    expect(toolDeclarationsFor("employee").map((tool) => tool.name)).not.toContain("get_profit_by_product");
+    expect(toolDeclarationsFor("owner").map((tool) => tool.name)).toContain("get_profit_by_product");
+  });
+
   it("tells the model not to speculate when it refuses", async () => {
     const result = await executeTool("get_profit_and_loss", {}, employee);
 
@@ -322,8 +330,8 @@ describe("classifyAiError", () => {
     ["User location is not supported for the API use.", "region"],
     ["This model models/gemini-2.5-flash is no longer available.", "model"],
     ["[404 Not Found] models/gemini-x is not found for API version v1beta", "model"],
-    ["AI request timed out", "transient"],
-    ["[503 Service Unavailable] The model is overloaded", "transient"],
+    ["AI request timed out", "timeout"],
+    ["[503 Service Unavailable] The model is overloaded", "overloaded"],
     ["Monthly AI budget of $5 reached", "budget"],
     ["something nobody has seen before", "unknown"],
   ])("%s -> %s", (message, expected) => {

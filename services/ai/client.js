@@ -37,6 +37,27 @@ const AiCall = require("../../models/AiCall");
  */
 const MODEL = env.GEMINI_MODEL;
 const TIMEOUT_MS = 20000;
+
+/**
+ * How hard the model thinks before answering.
+ *
+ * The Gemini 3 models reason before they reply, at "medium" by default, and
+ * that reasoning is time. On the move from 2.5 Flash it pushed Ask past the
+ * 20-second timeout above. Nothing this app asks for needs deep reasoning: the
+ * assistant looks figures up and summarises them, the invoice reader copies
+ * text off a page, and the arithmetic is done by the server either way. LOW is
+ * quicker and cheaper for no loss that matters here.
+ *
+ * Only sent to models that understand it. The 2.5 models use a token budget
+ * instead and reject a thinking level, so setting GEMINI_MODEL back to one of
+ * them must not break every call.
+ */
+const THINKING_LEVEL = "LOW";
+
+const withThinking = (config) =>
+  /^gemini-3/.test(MODEL) && !config.thinkingConfig
+    ? { ...config, thinkingConfig: { thinkingLevel: THINKING_LEVEL } }
+    : config;
 const MAX_RETRIES = 1;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 200;
@@ -163,7 +184,10 @@ const describeLastFailure = () => {
     quota: "The Gemini quota is used up for now. Free-tier limits reset on Google's schedule; try again later, or enable billing on the key.",
     region: "Gemini does not serve the region this server runs in. That is decided by the hosting location, not the code.",
     model: `The model "${MODEL}" is not available to this key. Set GEMINI_MODEL in the server's environment to a current model.`,
-    transient: "Gemini did not answer in time. This is usually momentary - try again.",
+    // Two different faults that used to share one message. Which one it was
+    // decides whether the fix is waiting or changing something here.
+    timeout: `Gemini took longer than ${TIMEOUT_MS / 1000} seconds to answer, so the app stopped waiting. If this keeps happening, the model is thinking too long for this timeout.`,
+    overloaded: "Google's Gemini servers are overloaded right now - the problem is on their side, not in this app. Try again in a minute.",
     budget: `This month's AI budget of $${MONTHLY_BUDGET_USD} has been reached.`,
   };
 
@@ -191,7 +215,11 @@ const classifyAiError = (message = "") => {
   // was never the problem. It depends on where the server runs, not the code.
   if (/location is not supported|user location/i.test(text)) return "region";
   if (/no longer available|not found|NOT_FOUND|is not supported|\b404\b/i.test(text)) return "model";
-  if (/timed out|ETIMEDOUT|ECONNRESET|fetch failed|UNAVAILABLE|overloaded|\b50[0-4]\b/i.test(text)) return "transient";
+  // Our own timeout and a dropped connection are "timeout"; Google saying it is
+  // busy is "overloaded". They look alike to the person asking, but one is
+  // tuned here and the other is only fixed by waiting.
+  if (/timed out|ETIMEDOUT|ECONNRESET|socket hang up|fetch failed/i.test(text)) return "timeout";
+  if (/UNAVAILABLE|overloaded|\b50[0-4]\b/i.test(text)) return "overloaded";
 
   return "unknown";
 };
@@ -246,7 +274,7 @@ const generate = async ({ contents, config = {}, feature, userId = null, cacheab
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     try {
       const response = await withTimeout(
-        ai.models.generateContent({ model: MODEL, contents, config }),
+        ai.models.generateContent({ model: MODEL, contents, config: withThinking(config) }),
         TIMEOUT_MS
       );
 

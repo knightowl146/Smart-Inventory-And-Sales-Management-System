@@ -364,6 +364,77 @@ describe("GET /api/movements/:id/receipt", () => {
 
 // ── A shop with no history at all ────────────────────────────────────────────
 
+describe("assistant tool: get_profit_by_product", () => {
+  const { executeTool } = require("../services/ai/toolExecutor");
+  const ownerUser = () => ({ id: String(state.owner._id), email: state.owner.email, role: "owner" });
+
+  /**
+   * A product that out-sells the widget on revenue but earns far less: 600 sold
+   * at 100 against a cost of 95. Ranking by revenue would put it first; ranking
+   * by profit must not - which is the whole reason this tool exists.
+   */
+  beforeAll(async () => {
+    const gadget = await asOwner(app).post("/api/products").send({
+      name: "Thin Margin Gadget",
+      sku: "TMG-001",
+      category: "Test",
+      purchasePrice: 95,
+      sellingPrice: 100,
+      unitPrice: 100,
+      quantity: 1000,
+      description: "High revenue, almost no profit",
+    });
+
+    await asOwner(app)
+      .post(`/api/products/${gadget.body.data._id}/sell`)
+      .send({ quantity: 600, unitPrice: 100, customerId });
+  });
+
+  it("ranks by profit, not revenue", async () => {
+    const result = await executeTool("get_profit_by_product", { days: 120 }, ownerUser());
+
+    expect(result.ok).toBe(true);
+    const [first] = result.data.products;
+    const gadget = result.data.products.find((p) => p.name === "Thin Margin Gadget");
+
+    expect(first.name).toBe("Forecast Widget");
+    expect(gadget.revenue).toBeGreaterThan(first.revenue); // more revenue...
+    expect(gadget.grossProfit).toBeLessThan(first.grossProfit); // ...much less profit
+  });
+
+  it("does the arithmetic the profit report does", async () => {
+    const result = await executeTool("get_profit_by_product", { days: 120 }, ownerUser());
+    const gadget = result.data.products.find((p) => p.name === "Thin Margin Gadget");
+
+    expect(gadget.unitsSold).toBe(600);
+    expect(gadget.revenue).toBe(60000);
+    expect(gadget.costOfGoodsSold).toBe(57000);
+    expect(gadget.grossProfit).toBe(3000);
+    expect(gadget.marginPercent).toBe(5);
+
+    for (const product of result.data.products) {
+      expect(product.grossProfit).toBeCloseTo(product.revenue - product.costOfGoodsSold, 2);
+    }
+  });
+
+  it("lists the least profitable first when asked", async () => {
+    const result = await executeTool("get_profit_by_product", { days: 120, order: "bottom" }, ownerUser());
+    const profits = result.data.products.map((p) => p.grossProfit);
+
+    expect(profits).toEqual([...profits].sort((a, b) => a - b));
+  });
+
+  it("is refused for an employee", async () => {
+    const result = await executeTool(
+      "get_profit_by_product",
+      { days: 120 },
+      { id: String(state.employee._id), email: state.employee.email, role: "employee" }
+    );
+
+    expect(result.refused).toBe(true);
+  });
+});
+
 describe("Cold start", () => {
   it("does not fall over on a product that has never sold", async () => {
     const fresh = await asOwner(app).post("/api/products").send({

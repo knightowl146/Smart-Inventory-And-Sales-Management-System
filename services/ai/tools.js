@@ -242,7 +242,7 @@ const TOOLS = [
     // for an employee because the permission table says so.
     permission: "finance:read",
     description:
-      "Revenue, cost of goods sold, gross profit and margin over a period. Owner only.",
+      "Store-wide revenue, cost of goods sold, gross profit and margin over a period. For profit per product, use get_profit_by_product. Owner only.",
     parameters: { type: "object", properties: { ...RANGE_PROPS } },
     handler: async (args) => {
       const { start, end } = parseRange(args);
@@ -279,6 +279,87 @@ const TOOLS = [
         grossProfit,
         marginPercent: revenue > 0 ? money((grossProfit / revenue) * 100) : 0,
         unitsSold: row?.units ?? 0,
+      };
+    },
+  },
+
+  {
+    name: "get_profit_by_product",
+    /**
+     * Profit per product, which the assistant could not answer before.
+     *
+     * The data was always there - the Analytics profit-by-product report works
+     * it out - but the only profit tool here was store-wide. Asked "which
+     * products made the most profit", the assistant correctly refused to rank by
+     * revenue instead: a television tops revenue at a 20% margin while a cable
+     * earns more per rupee sold, so the two rankings genuinely differ.
+     *
+     * Same arithmetic as get_profit_and_loss and the report: revenue at the price
+     * each sale was actually made at, cost at the product's purchase price.
+     * Owner only, like every other profit figure.
+     */
+    permission: "finance:read",
+    description:
+      "Gross profit per product over a period, with revenue, cost and margin, ranked by gross profit. Use for 'most/least profitable products'. Owner only.",
+    parameters: {
+      type: "object",
+      properties: {
+        ...RANGE_PROPS,
+        order: {
+          type: "string",
+          enum: ["top", "bottom"],
+          description: "top = most profitable (default); bottom = least profitable.",
+        },
+        limit: { type: "number", description: "How many to return. Default 10, max 50." },
+      },
+    },
+    handler: async (args) => {
+      const { start, end } = parseRange(args);
+      const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 50);
+      const direction = args.order === "bottom" ? 1 : -1;
+
+      const rows = await StockMovement.aggregate([
+        { $match: { type: "SALE", createdAt: { $gte: start, $lte: end } } },
+        {
+          $lookup: {
+            from: Product.collection.name,
+            localField: "product",
+            foreignField: "_id",
+            as: "product",
+          },
+        },
+        { $unwind: "$product" },
+        {
+          $group: {
+            _id: "$product._id",
+            name: { $first: "$product.name" },
+            sku: { $first: "$product.sku" },
+            category: { $first: "$product.category" },
+            units: { $sum: "$quantity" },
+            revenue: { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
+            cost: { $sum: { $multiply: ["$quantity", "$product.purchasePrice"] } },
+          },
+        },
+        { $addFields: { grossProfit: { $subtract: ["$revenue", "$cost"] } } },
+        // Ties broken by name so the same question gives the same list twice.
+        { $sort: { grossProfit: direction, name: 1 } },
+        { $limit: limit },
+      ]);
+
+      return {
+        period: { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) },
+        rankedBy: "grossProfit",
+        order: args.order === "bottom" ? "bottom" : "top",
+        products: rows.map((row) => ({
+          name: row.name,
+          sku: row.sku,
+          category: row.category,
+          unitsSold: row.units,
+          revenue: money(row.revenue),
+          costOfGoodsSold: money(row.cost),
+          grossProfit: money(row.grossProfit),
+          marginPercent: row.revenue > 0 ? money((row.grossProfit / row.revenue) * 100) : 0,
+        })),
       };
     },
   },
