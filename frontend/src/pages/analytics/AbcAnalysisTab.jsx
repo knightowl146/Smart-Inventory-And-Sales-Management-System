@@ -4,6 +4,7 @@ import StatCard from "../../components/StatCard";
 import DataTable from "../../components/DataTable";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const classTone = { A: "healthy", B: "info", C: "warning" };
 
@@ -51,7 +52,7 @@ const AbcAnalysisTab = () => {
   return (
     <div>
       <div className="stat-grid">
-        <StatCard label="Total inventory value" value={data.totalInventoryValue.toFixed(2)} />
+        <StatCard label="Total inventory value" value={formatMoney(data.totalInventoryValue, 0)} />
         <StatCard label="Class A products" value={data.summary.A} />
         <StatCard label="Class B products" value={data.summary.B} />
         <StatCard label="Class C products" value={data.summary.C} />
@@ -73,4 +74,4 @@ const AbcAnalysisTab = () => {
   );
 };
 
-export default AbcAnalysisTab;
+export default AbcAnalysisTab;

@@ -32,8 +32,8 @@ const supplierSchema = new mongoose.Schema(
          *
          * 7 is a deliberately unremarkable default - long enough not to
          * under-order for a supplier nobody has configured, short enough not to
-         * tie up capital. services/inventory/leadTime.js can also derive an
-         * observed value from purchase history where there is enough of it.
+         * tie up capital. Each product uses the lead time of the supplier who
+         * last delivered it (services/forecasting/demandRepository.js).
          */
         leadTimeDays: {
             type: Number,

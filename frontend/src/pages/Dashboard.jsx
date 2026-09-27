@@ -14,6 +14,7 @@ import GrowthBadge from "../components/GrowthBadge";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
+import { formatMoney, formatMoneyShort } from "../utils/format";
 
 const formatDate = (isoDate) =>
   new Date(isoDate).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -58,7 +59,7 @@ const Dashboard = () => {
         <StatCard label="Total products" value={overview.totalProducts} />
         <StatCard label="Total customers" value={overview.totalCustomers} />
         <StatCard label="Units in stock" value={overview.totalStock} />
-        <StatCard label="Inventory value" value={overview.inventoryValue.toFixed(2)} />
+        <StatCard label="Inventory value" value={formatMoney(overview.inventoryValue, 0)} />
         <StatCard label="Low stock" value={overview.lowStockCount} tone="warning" />
         <StatCard label="Out of stock" value={overview.outOfStockCount} tone="danger" />
       </div>
@@ -69,15 +70,15 @@ const Dashboard = () => {
           <div className="financial-summary">
             <div>
               <p className="field-hint">Revenue</p>
-              <p className="financial-summary__value">{financial.revenue.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(financial.revenue, 0)}</p>
             </div>
             <div>
               <p className="field-hint">Cost of goods sold</p>
-              <p className="financial-summary__value">{financial.costOfGoodsSold.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(financial.costOfGoodsSold, 0)}</p>
             </div>
             <div>
               <p className="field-hint">Gross profit</p>
-              <p className="financial-summary__value">{financial.profit.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(financial.profit, 0)}</p>
             </div>
             <div>
               <p className="field-hint">Margin</p>
@@ -92,15 +93,15 @@ const Dashboard = () => {
           <div className="financial-summary">
             <div>
               <p className="field-hint">Sales</p>
-              <p className="financial-summary__value">{salesVsPurchases.sales.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(salesVsPurchases.sales, 0)}</p>
             </div>
             <div>
               <p className="field-hint">Purchases</p>
-              <p className="financial-summary__value">{salesVsPurchases.purchases.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(salesVsPurchases.purchases, 0)}</p>
             </div>
             <div>
               <p className="field-hint">Difference</p>
-              <p className="financial-summary__value">{salesVsPurchases.difference.toFixed(2)}</p>
+              <p className="financial-summary__value">{formatMoney(salesVsPurchases.difference, 0)}</p>
             </div>
           </div>
         </div>
@@ -115,8 +116,8 @@ const Dashboard = () => {
             <LineChart data={chartData}>
               <CartesianGrid stroke="#e1e3df" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#6b7280" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
-              <Tooltip />
+              <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={formatMoneyShort} width={64} />
+              <Tooltip formatter={(value) => formatMoney(value)} />
               <Line type="monotone" dataKey="revenue" stroke="#2f6f4e" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -151,7 +152,7 @@ const Dashboard = () => {
               {topSellingProducts.map((product) => (
                 <li key={product.productId}>
                   <span>{product.name}</span>
-                  <span className="field-hint">{product.quantitySold} units · {product.revenue.toFixed(2)}</span>
+                  <span className="field-hint">{product.quantitySold} units · {formatMoney(product.revenue)}</span>
                 </li>
               ))}
             </ul>
@@ -162,4 +163,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Dashboard;

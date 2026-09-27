@@ -189,3 +189,50 @@ describe("the whole catalogue, filled", () => {
     expect(gapSales / normalSales).toBeLessThan(1.2);
   });
 });
+
+// ── Today, pro-rated ─────────────────────────────────────────────────────────
+
+describe("filling today", () => {
+  const { proRateToday, SHOP_OPENS, SHOP_CLOSES } = require("../services/seed/catchup");
+
+  // A fixed day, in the suite's pinned timezone (Asia/Kolkata).
+  const at = (hour, minute = 0) => {
+    const d = new Date(2026, 8, 27, hour, minute, 0, 0);
+    return d;
+  };
+  const sale = { quantity: 20, date: at(12) };
+
+  it("writes nothing before the shop opens", () => {
+    expect(proRateToday(sale, at(SHOP_OPENS - 1))).toBeNull();
+  });
+
+  it("writes the share of the day that has passed - 6:15 pm is three-quarters", () => {
+    const result = proRateToday(sale, at(18, 15));
+    expect(result.quantity).toBe(15); // 20 x 8.25/11
+  });
+
+  it("writes the whole day once the shop has closed", () => {
+    expect(proRateToday(sale, at(SHOP_CLOSES + 1)).quantity).toBe(20);
+  });
+
+  it("never timestamps anything in the future, and keeps it within shop hours", () => {
+    for (const hour of [10.5, 12, 15, 18.25, 20.9]) {
+      const now = at(Math.floor(hour), Math.round((hour % 1) * 60));
+      const result = proRateToday(sale, now);
+      if (!result) continue;
+      expect(result.date.getTime()).toBeLessThan(now.getTime());
+      expect(result.date.getHours()).toBeGreaterThanOrEqual(SHOP_OPENS);
+    }
+  });
+
+  it("fills today alongside the gap without writing past the current moment", () => {
+    const now = new Date();
+    const gapDays = [...Array.from({ length: GAP }, (_, i) => addDaysToKey(gapStartKey, i)), todayKey];
+    const plan = planCatchup({ product, gapDays, historyStartKey, existing: [], now });
+
+    for (const movement of plan.created) {
+      expect(movement.createdAt.getTime()).toBeLessThanOrEqual(now.getTime());
+    }
+    expect(replay(plan, []).chains).toBe(true);
+  });
+});

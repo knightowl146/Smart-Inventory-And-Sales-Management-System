@@ -303,7 +303,10 @@ const Forecast = () => {
                   <tr>
                     <td>Supplier lead time</td>
                     <td>
-                      {data.reorder.leadTime.leadTimeDays} days ({data.reorder.leadTime.source})
+                      {data.reorder.leadTime.leadTimeDays} days
+                      {data.reorder.leadTime.supplierName
+                        ? ` (${data.reorder.leadTime.supplierName}, the last supplier to deliver it)`
+                        : " (default - no supplier has delivered this yet)"}
                     </td>
                   </tr>
                   <tr>

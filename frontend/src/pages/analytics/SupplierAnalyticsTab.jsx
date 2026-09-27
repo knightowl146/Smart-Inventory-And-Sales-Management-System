@@ -4,6 +4,7 @@ import StatCard from "../../components/StatCard";
 import DataTable from "../../components/DataTable";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const SupplierAnalyticsTab = () => {
   const [data, setData] = useState(null);
@@ -35,8 +36,8 @@ const SupplierAnalyticsTab = () => {
     { key: "supplierName", header: "Supplier" },
     { key: "totalPurchases", header: "Orders", align: "right" },
     { key: "totalQuantityPurchased", header: "Units Supplied", align: "right" },
-    { key: "totalPurchaseValue", header: "Total Value", align: "right", render: (row) => row.totalPurchaseValue.toFixed(2) },
-    { key: "averagePurchaseValue", header: "Avg. Order Value", align: "right", render: (row) => row.averagePurchaseValue.toFixed(2) },
+    { key: "totalPurchaseValue", header: "Total Value", align: "right", render: (row) => formatMoney(row.totalPurchaseValue) },
+    { key: "averagePurchaseValue", header: "Avg. Order Value", align: "right", render: (row) => formatMoney(row.averagePurchaseValue) },
     {
       key: "lastPurchaseDate",
       header: "Last Purchase",
@@ -50,7 +51,7 @@ const SupplierAnalyticsTab = () => {
         <StatCard label="Suppliers" value={data.summary.totalSuppliers} />
         <StatCard label="Purchase transactions" value={data.summary.totalPurchaseTransactions} />
         <StatCard label="Units purchased" value={data.summary.totalQuantityPurchased} />
-        <StatCard label="Total purchase value" value={data.summary.totalPurchaseValue.toFixed(2)} />
+        <StatCard label="Total purchase value" value={formatMoney(data.summary.totalPurchaseValue, 0)} />
       </div>
 
       <div className="panel">
@@ -66,4 +67,4 @@ const SupplierAnalyticsTab = () => {
   );
 };
 
-export default SupplierAnalyticsTab;
+export default SupplierAnalyticsTab;

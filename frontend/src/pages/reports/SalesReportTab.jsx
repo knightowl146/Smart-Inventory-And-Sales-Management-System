@@ -6,6 +6,7 @@ import DateRangeFilter from "../../components/DateRangeFilter";
 import ExportButtons from "../../components/ExportButtons";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const SalesReportTab = () => {
   const [report, setReport] = useState(null);
@@ -44,13 +45,13 @@ const SalesReportTab = () => {
     { key: "productName", header: "Product" },
     { key: "category", header: "Category" },
     { key: "unitsSold", header: "Units Sold", align: "right" },
-    { key: "revenue", header: "Revenue", align: "right", render: (row) => row.revenue.toFixed(2) },
+    { key: "revenue", header: "Revenue", align: "right", render: (row) => formatMoney(row.revenue) },
   ];
 
   const customerColumns = [
     { key: "customerName", header: "Customer" },
     { key: "unitsPurchased", header: "Units", align: "right" },
-    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => row.totalSpent.toFixed(2) },
+    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => formatMoney(row.totalSpent) },
   ];
 
   return (
@@ -63,7 +64,7 @@ const SalesReportTab = () => {
       <div className="stat-grid">
         <StatCard label="Transactions" value={report.summary.totalTransactions} />
         <StatCard label="Units sold" value={report.summary.totalUnitsSold} />
-        <StatCard label="Total revenue" value={report.summary.totalRevenue.toFixed(2)} />
+        <StatCard label="Total revenue" value={formatMoney(report.summary.totalRevenue, 0)} />
       </div>
 
       <div className="dashboard-grid">
@@ -81,4 +82,4 @@ const SalesReportTab = () => {
   );
 };
 
-export default SalesReportTab;
+export default SalesReportTab;

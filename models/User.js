@@ -100,6 +100,20 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    /**
+     * A shared, public demo login (see seedDemoUsers.js and middlewares/demoGuard.js).
+     *
+     * Its password is published for anyone to try the app, so the account is
+     * read-only on the server: every request that would change data is refused
+     * before it reaches a controller, its AI use has a daily allowance, and
+     * other people's email addresses are masked in what it sees. Only the seed
+     * script sets this - no API endpoint accepts it.
+     */
+    isDemo: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

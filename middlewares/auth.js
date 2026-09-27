@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const { verifyAccessToken } = require("../services/tokenService");
+const { isAllowedForDemo, refuseDemoWrite } = require("./demoGuard");
 
 const readBearerToken = (req) => {
   const header = req.get("authorization") || "";
@@ -54,7 +55,13 @@ const requireAuth = async (req, res, next) => {
       email: user.email,
       role: user.role,
       tokenVersion: user.tokenVersion,
+      isDemo: user.isDemo === true,
     };
+
+    // The public demo logins can look at everything and change nothing.
+    if (req.user.isDemo && !isAllowedForDemo(req)) {
+      return refuseDemoWrite(res);
+    }
 
     return next();
   } catch (err) {

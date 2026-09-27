@@ -146,7 +146,8 @@ const Login = () => {
             <p className="login__demo-title">Try it</p>
             <p className="field-hint">
               Two roles, the same app. The employee cannot see cost prices,
-              margins or anyone else&apos;s sales.
+              margins or anyone else&apos;s sales. Both are read-only: look
+              around freely, nothing can be changed.
             </p>
 
             <div className="login__demo-buttons">

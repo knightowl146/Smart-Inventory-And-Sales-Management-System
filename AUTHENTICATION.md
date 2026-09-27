@@ -155,6 +155,32 @@ pagination totals stay honest.
 
 ---
 
+## Public demo accounts
+
+The login page can offer one-click demo sign-ins (`VITE_DEMO_OWNER`,
+`VITE_DEMO_EMPLOYEE`). Their passwords are public, so those accounts are
+created with `isDemo: true` by `npm run seed:demo-users` and handled
+differently on the server:
+
+- **Read-only.** `requireAuth` refuses any request from a demo account that
+  could change data, with `403 DEMO_READ_ONLY`, before a controller runs
+  (`middlewares/demoGuard.js`). Reads are allowed; the only POSTs allowed are
+  asking a question and reading an invoice, which change nothing. Anything
+  else, including an endpoint added later, is refused by default.
+- **No one else's contact details.** The response filter masks every `email`
+  except the viewer's own, and every `ip` and `userAgent`, in what a demo
+  account receives. The Staff page and Activity Log stay browsable.
+- **A capped AI allowance.** Per visitor per day, per demo account per day
+  (counted from the usage ledger, so a restart does not reset it), and at most
+  half the monthly AI budget (`services/ai/demoAllowance.js`).
+- **No per-session tracking.** Many visitors share one demo login, and the
+  five-session cap plus reuse detection would let the sixth sign-in revoke
+  everyone's session. Demo refresh tokens are verified by signature, expiry
+  and `tokenVersion` only. That is enough for an account that cannot change
+  anything.
+- **Sign-in flood limit.** All sign-ins, successful or not, are limited to 30
+  per hour per address.
+
 ## Audit trail
 
 Two layers again, for the same reason:

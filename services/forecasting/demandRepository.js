@@ -91,49 +91,72 @@ const getAllDemandSeries = async (lookbackDays = DEFAULT_LOOKBACK_DAYS) => {
 };
 
 /**
- * Lead time for a product's usual supplier.
+ * Lead time: days from placing an order to the stock arriving.
  *
- * Prefers what actually happened over what someone typed into a form: if there
- * are enough purchases to see a rhythm, the observed median gap between
- * deliveries is a better estimate than a configured default nobody revisited.
- * Falls back to the supplier's configured value, then to the schema default.
+ * Taken from the supplier who last delivered each product - their configured
+ * leadTimeDays - or 7 days where no supplier has delivered it yet.
+ *
+ * An earlier version preferred an "observed" lead time: the median gap between
+ * one delivery and the next. That measures how often the shop reorders, not
+ * how long an order takes to arrive - this system records deliveries, not
+ * order dates, so order-to-arrival time is simply not in the data. A cable
+ * restocked every three weeks came out with a 24-day lead time against its
+ * supplier's 7, the Forecast page and the Reorder Plan disagreed about the same
+ * product, and the reorder point for every steady seller was inflated to cover
+ * a wait that never happens.
  */
-const getLeadTimeForProduct = async (productId, { minObservations = 3 } = {}) => {
-  const purchases = await StockMovement.find({ product: productId, type: "PURCHASE" })
-    .select("createdAt supplier")
-    .sort({ createdAt: 1 })
+const DEFAULT_LEAD_TIME_DAYS = 7;
+
+const defaultLeadTime = () => ({
+  leadTimeDays: DEFAULT_LEAD_TIME_DAYS,
+  source: "default",
+  supplierName: null,
+});
+
+/**
+ * Lead times for many products in two queries, not one per product.
+ *
+ * @param {Array<string|mongoose.Types.ObjectId>} [productIds] omit for every product
+ * @returns {Promise<Map<string, {leadTimeDays: number, source: string, supplierName: string|null}>>}
+ *          products with no delivering supplier are absent - use leadTimeFrom()
+ */
+const getLeadTimesForProducts = async (productIds) => {
+  const match = { type: "PURCHASE", supplier: { $ne: null } };
+  if (productIds) {
+    match.product = { $in: productIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
+  }
+
+  const latest = await StockMovement.aggregate([
+    { $match: match },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$product", supplier: { $first: "$supplier" } } },
+  ]);
+
+  const suppliers = await Supplier.find({ _id: { $in: latest.map((row) => row.supplier) } })
+    .select("name leadTimeDays")
     .lean();
+  const supplierById = new Map(suppliers.map((supplier) => [String(supplier._id), supplier]));
 
-  if (purchases.length >= minObservations + 1) {
-    const gaps = [];
-    for (let i = 1; i < purchases.length; i += 1) {
-      const gapDays =
-        (new Date(purchases[i].createdAt) - new Date(purchases[i - 1].createdAt)) /
-        (24 * 60 * 60 * 1000);
-      if (gapDays > 0 && gapDays < 180) gaps.push(gapDays);
-    }
-
-    if (gaps.length >= minObservations) {
-      const sorted = gaps.sort((a, b) => a - b);
-      const middle = Math.floor(sorted.length / 2);
-      const observed =
-        sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-
-      return { leadTimeDays: Math.round(observed), source: "observed", observations: gaps.length };
+  const leadTimes = new Map();
+  for (const row of latest) {
+    const supplier = supplierById.get(String(row.supplier));
+    if (supplier && Number.isFinite(supplier.leadTimeDays)) {
+      leadTimes.set(String(row._id), {
+        leadTimeDays: supplier.leadTimeDays,
+        source: "supplier",
+        supplierName: supplier.name,
+      });
     }
   }
 
-  const lastPurchase = purchases[purchases.length - 1];
-
-  if (lastPurchase?.supplier) {
-    const supplier = await Supplier.findById(lastPurchase.supplier).select("leadTimeDays").lean();
-    if (supplier?.leadTimeDays != null) {
-      return { leadTimeDays: supplier.leadTimeDays, source: "supplier", observations: 0 };
-    }
-  }
-
-  return { leadTimeDays: 7, source: "default", observations: 0 };
+  return leadTimes;
 };
+
+/** One product's entry from getLeadTimesForProducts, or the default. */
+const leadTimeFrom = (leadTimes, productId) => leadTimes.get(String(productId)) ?? defaultLeadTime();
+
+const getLeadTimeForProduct = async (productId) =>
+  leadTimeFrom(await getLeadTimesForProducts([productId]), productId);
 
 /** Summary statistics a reorder policy needs, from a demand series. */
 const demandStatistics = (series, { recentDays = 60 } = {}) => {
@@ -260,6 +283,9 @@ module.exports = {
   getProductDemandSeries,
   getAllDemandSeries,
   getLeadTimeForProduct,
+  getLeadTimesForProducts,
+  leadTimeFrom,
+  DEFAULT_LEAD_TIME_DAYS,
   demandStatistics,
   getSalesWithListPrice,
   getActorStatistics,

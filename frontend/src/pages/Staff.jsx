@@ -165,6 +165,7 @@ const Staff = () => {
                       <td>
                         {person.name}
                         {isSelf && <span className="badge badge--info"> you</span>}
+                        {person.isDemo && <span className="badge badge--warning"> read-only demo</span>}
                       </td>
                       <td>{person.email}</td>
                       <td>

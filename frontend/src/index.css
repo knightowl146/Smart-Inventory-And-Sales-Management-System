@@ -67,6 +67,17 @@ button, input, select, textarea {
   padding: 28px 32px;
 }
 
+.demo-banner {
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-warning-soft);
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .sidebar {
   width: 236px;
   flex-shrink: 0;
@@ -599,6 +610,15 @@ button, input, select, textarea {
   font-family: var(--font-mono);
   font-size: 20px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.stat-card__value--long {
+  font-size: 17px;
+}
+
+.stat-card__value--longer {
+  font-size: 15px;
 }
 
 /* Additional badge tones */
@@ -657,7 +677,7 @@ button, input, select, textarea {
 
 .financial-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
   margin-bottom: 14px;
 }
@@ -666,6 +686,7 @@ button, input, select, textarea {
   margin: 2px 0 0;
   font-family: var(--font-mono);
   font-size: 18px;
+  white-space: nowrap;
 }
 
 .growth-badge {
@@ -1054,6 +1075,20 @@ button, input, select, textarea {
 
 .ask__answer p {
   margin: 0;
+}
+
+.ask__answer > * + p,
+.ask__answer > * + .ask__list {
+  margin-top: 8px;
+}
+
+.ask__list {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.ask__list li + li {
+  margin-top: 4px;
 }
 
 .ask__tools {

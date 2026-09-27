@@ -275,3 +275,33 @@ describe("POST /api/auth/logout", () => {
     expect(afterLogout.status).toBe(401);
   });
 });
+
+// ── Shared demo login ────────────────────────────────────────────────────────
+
+describe("A demo login shared by many visitors", () => {
+  const email = "demo-shared@test.local";
+
+  beforeAll(async () => {
+    const demo = new User({ name: "Demo", email, role: "owner", isDemo: true });
+    await demo.setPassword(TEST_PASSWORD);
+    await demo.save();
+  });
+
+  it("the sixth visitor signing in does not sign everyone else out", async () => {
+    // Regression: sessions are capped at five per account. For a shared demo
+    // login the sixth sign-in used to evict the first visitor's session, whose
+    // next refresh then looked like token theft and revoked every session.
+    const visitors = [];
+    for (let i = 0; i < 6; i += 1) {
+      const login = await raw().post("/api/auth/login").send({ email, password: TEST_PASSWORD });
+      expect(login.status).toBe(200);
+      expect(login.body.data.user.isDemo).toBe(true);
+      visitors.push(readRefreshCookie(login));
+    }
+
+    for (const cookie of visitors) {
+      const res = await raw().post("/api/auth/refresh").set("Cookie", cookie);
+      expect(res.status).toBe(200);
+    }
+  });
+});

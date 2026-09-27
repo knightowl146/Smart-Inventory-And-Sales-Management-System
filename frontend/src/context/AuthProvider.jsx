@@ -120,6 +120,9 @@ export const AuthProvider = ({ children }) => {
       status,
       isAuthenticated: status === "authenticated",
       isOwner: user?.role === "owner",
+      // A public, read-only demo login: the server refuses its writes; the UI
+      // says so up front rather than letting someone fill in a form first.
+      isDemo: user?.isDemo === true,
       signIn,
       signOut,
     }),

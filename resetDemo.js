@@ -32,7 +32,10 @@ const AiCall = require("./models/AiCall");
  * Demo accounts are created from DEMO_OWNER_EMAIL / DEMO_OWNER_PASSWORD and
  * DEMO_EMPLOYEE_EMAIL / DEMO_EMPLOYEE_PASSWORD, which are the same values you
  * put in Vercel as VITE_DEMO_OWNER / VITE_DEMO_EMPLOYEE so the login page can
- * display them.
+ * display them. They are created read-only (isDemo), like seedDemoUsers.js.
+ *
+ * This wipes every account. To add the demo logins to a database that has
+ * real accounts in it, use `npm run seed:demo-users` instead.
  */
 
 const HISTORY_DAYS = Number(process.env.DEMO_HISTORY_DAYS || 180);
@@ -83,7 +86,7 @@ const run = async () => {
 
   logger.info("Recreating demo accounts…");
 
-  const owner = new User({ name: "Demo Owner", email: ownerEmail, role: "owner" });
+  const owner = new User({ name: "Demo Owner", email: ownerEmail, role: "owner", isDemo: true });
   await owner.setPassword(ownerPassword);
   await owner.save();
 
@@ -92,6 +95,7 @@ const run = async () => {
     email: employeeEmail,
     role: "employee",
     createdBy: owner._id,
+    isDemo: true,
   });
   await employee.setPassword(employeePassword);
   await employee.save();
@@ -104,6 +108,7 @@ const run = async () => {
     email: employeeEmail.replace("@", "2@"),
     role: "employee",
     createdBy: owner._id,
+    isDemo: true,
   });
   await secondEmployee.setPassword(employeePassword);
   await secondEmployee.save();

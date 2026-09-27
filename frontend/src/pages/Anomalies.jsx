@@ -4,6 +4,7 @@ import StatCard from "../components/StatCard";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
+import { formatMoney } from "../utils/format";
 
 const SEVERITY_BADGE = { critical: "danger", high: "warning", medium: "info" };
 
@@ -54,7 +55,7 @@ const Anomalies = () => {
     }
 
     if (anomaly.type === "discount") {
-      return `${anomaly.product?.name ?? "A product"} sold at ${anomaly.soldAt} against a list price of ${anomaly.listPrice} — ${anomaly.discountPercent}% off, ${anomaly.discountValue} in total.`;
+      return `${anomaly.product?.name ?? "A product"} sold at ${formatMoney(anomaly.soldAt)} against a list price of ${formatMoney(anomaly.listPrice)} — ${anomaly.discountPercent}% off, ${formatMoney(anomaly.discountValue)} in total.`;
     }
 
     return `${anomaly.actor?.name ?? "An account"} shows a ${anomaly.metricLabel} of ${anomaly.observed}, against ${anomaly.peerAverage} for colleagues.`;

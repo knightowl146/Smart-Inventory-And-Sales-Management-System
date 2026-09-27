@@ -2,8 +2,7 @@ const Product = require("../../models/Product");
 const StockMovement = require("../../models/StockMovements");
 const Briefing = require("../../models/Briefing");
 const { generateJson, isConfigured } = require("./client");
-const { calculateReorderPolicy } = require("../inventory/reorder");
-const { getAllDemandSeries, demandStatistics } = require("../forecasting/demandRepository");
+const { buildReorderPlan } = require("../inventory/reorderPlan");
 
 /**
  * The weekly briefing.
@@ -59,7 +58,7 @@ const collectMetrics = async (periodStart, periodEnd) => {
     };
   };
 
-  const [current, previous, topProducts, lowStock, products, allSeries] = await Promise.all([
+  const [current, previous, topProducts, lowStock, reorderPlan] = await Promise.all([
     salesIn(periodStart, periodEnd),
     salesIn(priorStart, periodStart),
     StockMovement.aggregate([
@@ -85,21 +84,10 @@ const collectMetrics = async (periodStart, periodEnd) => {
       { $project: { _id: 0, name: "$product.name", units: 1, revenue: 1 } },
     ]),
     Product.countDocuments({ $expr: { $lte: ["$quantity", "$lowStockThreshold"] } }),
-    Product.find().select("name quantity").lean(),
-    getAllDemandSeries(90),
+    // The same plan the Reorder Plan page shows, so the briefing's count
+    // matches what the owner finds when they open it.
+    buildReorderPlan(),
   ]);
-
-  const needingReorder = products.filter((product) => {
-    const series = allSeries.get(String(product._id)) ?? { dates: [], values: [] };
-    const stats = demandStatistics(series);
-    const policy = calculateReorderPolicy({
-      meanDailyDemand: stats.meanDailyDemand,
-      demandStdDev: stats.demandStdDev,
-      leadTimeDays: 7,
-      currentStock: product.quantity,
-    });
-    return policy.suggestedQuantity > 0;
-  });
 
   return {
     period: {
@@ -116,8 +104,8 @@ const collectMetrics = async (periodStart, periodEnd) => {
     marginPercent: current.revenue > 0 ? money((current.grossProfit / current.revenue) * 100) : 0,
     topProducts: topProducts.map((p) => ({ ...p, revenue: money(p.revenue) })),
     lowStockCount: lowStock,
-    needingReorderCount: needingReorder.length,
-    catalogueSize: products.length,
+    needingReorderCount: reorderPlan.summary.needingOrder,
+    catalogueSize: reorderPlan.summary.productsReviewed,
   };
 };
 

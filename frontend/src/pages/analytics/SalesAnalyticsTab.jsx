@@ -6,6 +6,7 @@ import CategoryBarChart from "../../components/CategoryBarChart";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/EmptyState";
+import { formatMoney, formatMoneyShort } from "../../utils/format";
 
 const formatDate = (isoDate) =>
   new Date(isoDate).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -52,7 +53,7 @@ const SalesAnalyticsTab = () => {
     <div>
       <div className="stat-grid">
         <StatCard label="Total units sold" value={summary.totalUnitsSold} />
-        <StatCard label="Total revenue" value={summary.totalRevenue.toFixed(2)} />
+        <StatCard label="Total revenue" value={formatMoney(summary.totalRevenue, 0)} />
       </div>
 
       <div className="dashboard-grid">
@@ -65,8 +66,8 @@ const SalesAnalyticsTab = () => {
               <LineChart data={chartData}>
                 <CartesianGrid stroke="#e1e3df" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <Tooltip />
+                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={formatMoneyShort} width={64} />
+                <Tooltip formatter={(value) => formatMoney(value)} />
                 <Line type="monotone" dataKey="revenue" stroke="#2f6f4e" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -92,7 +93,7 @@ const SalesAnalyticsTab = () => {
             {topProducts.map((item) => (
               <li key={item.product._id}>
                 <span>{item.product.name}</span>
-                <span className="field-hint">{item.quantitySold} units · {item.revenue.toFixed(2)}</span>
+                <span className="field-hint">{item.quantitySold} units · {formatMoney(item.revenue)}</span>
               </li>
             ))}
           </ul>
@@ -102,4 +103,4 @@ const SalesAnalyticsTab = () => {
   );
 };
 
-export default SalesAnalyticsTab;
+export default SalesAnalyticsTab;

@@ -4,6 +4,7 @@ import { useAuth } from "../context/authContext";
 import Button from "../components/Button";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
+import FormattedAnswer from "../components/FormattedAnswer";
 
 /**
  * Ask your inventory.
@@ -28,8 +29,8 @@ const OWNER_SUGGESTIONS = [
 
 const EMPLOYEE_SUGGESTIONS = [
   "What is running low on stock?",
-  "Find toothpaste in the catalogue",
-  "How many units of Colgate do we have?",
+  "Find HDMI cables in the catalogue",
+  "How many Wireless Mouse units do we have?",
 ];
 
 const Ask = () => {
@@ -121,7 +122,7 @@ const Ask = () => {
             <p className="ask__question">{exchange.question}</p>
 
             <div className={`ask__answer${exchange.refused ? " ask__answer--refused" : ""}`}>
-              <p>{exchange.answer}</p>
+              <FormattedAnswer text={exchange.answer} />
 
               {exchange.toolCalls.length > 0 && (
                 <div className="ask__tools">

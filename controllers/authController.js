@@ -24,6 +24,7 @@ const publicUser = (user) => ({
   role: user.role,
   isActive: user.isActive,
   lastLoginAt: user.lastLoginAt,
+  isDemo: user.isDemo === true,
 });
 
 const pruneSessions = (user) => {
@@ -37,8 +38,33 @@ const pruneSessions = (user) => {
   }
 };
 
+/**
+ * Demo accounts do not keep a session list.
+ *
+ * One demo login is shared by everyone who tries the app, and the session list
+ * was never built for that. Its cap of five meant the sixth visitor to sign in
+ * pushed the first one's session out; that visitor's next refresh then looked
+ * like a stolen token being replayed, and reuse detection - correctly, for a
+ * real account - revoked every session, signing out everyone on the demo at
+ * once. Anyone could do that on purpose by signing in six times.
+ *
+ * So for a demo account the refresh token is checked by signature, expiry and
+ * tokenVersion alone, and rotation does not track jtis. Reuse detection guards
+ * an account worth stealing; the demo account is read-only and its password is
+ * public, so there is nothing for it to protect here.
+ */
 const issueSession = async (user, req, res) => {
   const refresh = signRefreshToken(user);
+
+  if (user.isDemo) {
+    // Only the sign-in time changes - and not the session array, which
+    // concurrent demo sign-ins would otherwise overwrite in each other.
+    if (user.isModified("lastLoginAt")) {
+      await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: user.lastLoginAt } });
+    }
+    setRefreshCookie(res, refresh.token);
+    return signAccessToken(user);
+  }
 
   pruneSessions(user);
   user.sessions.push({
@@ -161,6 +187,11 @@ const refresh = async (req, res, next) => {
     if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
       clearRefreshCookie(res);
       return res.status(401).json({ success: false, message: "Session is no longer valid" });
+    }
+
+    if (user.isDemo) {
+      const accessToken = await issueSession(user, req, res);
+      return res.status(200).json({ success: true, data: { accessToken, user: publicUser(user) } });
     }
 
     const index = user.sessions.findIndex((s) => s.jti === payload.jti);

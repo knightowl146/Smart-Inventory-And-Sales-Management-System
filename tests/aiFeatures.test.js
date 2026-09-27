@@ -163,9 +163,13 @@ describe("GET /api/analytics/forecast/:productId", () => {
     expect(typeof accuracy.beatsBaseline).toBe("boolean");
   });
 
-  it("prefers the observed lead time or the supplier's over a blind default", async () => {
+  it("uses the 7-day default for a product no supplier has delivered yet", async () => {
     const res = await asOwner(app).get(`/api/analytics/forecast/${productId}`);
-    expect(["observed", "supplier", "default"]).toContain(res.body.data.reorder.leadTime.source);
+    expect(res.body.data.reorder.leadTime).toEqual({
+      leadTimeDays: 7,
+      source: "default",
+      supplierName: null,
+    });
   });
 
   it("404s an unknown product and 400s a malformed id", async () => {
@@ -185,7 +189,8 @@ describe("GET /api/analytics/reorder-plan", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.summary.productsReviewed).toBeGreaterThan(0);
-    expect(res.body.data.assumptions.leadTimeDays).toBeGreaterThan(0);
+    expect(res.body.data.assumptions.defaultLeadTimeDays).toBe(7);
+    expect(res.body.data.rows.every((row) => row.leadTime.leadTimeDays > 0)).toBe(true);
     expect(Array.isArray(res.body.data.rows)).toBe(true);
   });
 
@@ -548,5 +553,39 @@ describe("POST /api/ai/invoice/extract", () => {
     const after = await asOwner(app).get(`/api/products/${productId}`);
 
     expect(after.body.data.quantity).toBe(before.body.data.quantity);
+  });
+});
+
+// ── Lead time: one answer on every page ──────────────────────────────────────
+// Last in the file on purpose: it records a delivery, which changes stock.
+
+describe("Lead time comes from the supplier who delivers the product", () => {
+  const planRowFor = async () => {
+    const plan = await asOwner(app).get("/api/analytics/reorder-plan");
+    return plan.body.data.rows.find((row) => String(row.product.id) === String(productId));
+  };
+
+  it("the Forecast page and the Reorder Plan agree about the same product", async () => {
+    const forecast = await asOwner(app).get(`/api/analytics/forecast/${productId}`);
+    const row = await planRowFor();
+
+    // Regression: the Forecast page once estimated lead time from the gap
+    // between deliveries while the plan averaged every supplier's, so one
+    // product showed 24 days on one screen and 7 on the other.
+    expect(row.leadTime).toEqual(forecast.body.data.reorder.leadTime);
+    expect(row.reorderPoint).toBe(forecast.body.data.reorder.reorderPoint);
+  });
+
+  it("switches to the supplier's configured lead time once they deliver it", async () => {
+    const delivery = await asOwner(app)
+      .post(`/api/products/${productId}/purchase`)
+      .send({ quantity: 10, unitPrice: 40, supplierId });
+    expect(delivery.status).toBe(200);
+
+    const forecast = await asOwner(app).get(`/api/analytics/forecast/${productId}`);
+    const expected = { leadTimeDays: 5, source: "supplier", supplierName: "Forecast Supplier" };
+
+    expect(forecast.body.data.reorder.leadTime).toEqual(expected);
+    expect((await planRowFor()).leadTime).toEqual(expected);
   });
 });

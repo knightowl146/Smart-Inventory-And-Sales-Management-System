@@ -5,6 +5,7 @@ import DataTable from "../../components/DataTable";
 import ExportButtons from "../../components/ExportButtons";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const InventoryReportTab = () => {
   const [report, setReport] = useState(null);
@@ -37,7 +38,7 @@ const InventoryReportTab = () => {
     { key: "sku", header: "SKU" },
     { key: "currentStock", header: "Stock", align: "right" },
     { key: "lowStockThreshold", header: "Threshold", align: "right" },
-    { key: "inventoryValue", header: "Value", align: "right", render: (row) => row.inventoryValue.toFixed(2) },
+    { key: "inventoryValue", header: "Value", align: "right", render: (row) => formatMoney(row.inventoryValue) },
   ];
 
   const outOfStockColumns = [
@@ -56,7 +57,7 @@ const InventoryReportTab = () => {
       <div className="stat-grid">
         <StatCard label="Total products" value={report.summary.totalProducts} />
         <StatCard label="Total quantity" value={report.summary.totalQuantity} />
-        <StatCard label="Inventory value" value={report.summary.totalInventoryValue.toFixed(2)} />
+        <StatCard label="Inventory value" value={formatMoney(report.summary.totalInventoryValue, 0)} />
         <StatCard label="Low stock" value={report.summary.lowStockCount} tone="warning" />
         <StatCard label="Out of stock" value={report.summary.outOfStockCount} tone="danger" />
       </div>
@@ -76,4 +77,4 @@ const InventoryReportTab = () => {
   );
 };
 
-export default InventoryReportTab;
+export default InventoryReportTab;

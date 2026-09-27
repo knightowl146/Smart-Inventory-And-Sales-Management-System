@@ -5,6 +5,7 @@ import DataTable from "../../components/DataTable";
 import DateRangeFilter from "../../components/DateRangeFilter";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const CustomerReportTab = () => {
   const [report, setReport] = useState(null);
@@ -36,8 +37,8 @@ const CustomerReportTab = () => {
     { key: "customerName", header: "Customer" },
     { key: "totalPurchases", header: "Orders", align: "right" },
     { key: "totalQuantityPurchased", header: "Units", align: "right" },
-    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => row.totalSpent.toFixed(2) },
-    { key: "averagePurchaseValue", header: "Avg. Order", align: "right", render: (row) => row.averagePurchaseValue.toFixed(2) },
+    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => formatMoney(row.totalSpent) },
+    { key: "averagePurchaseValue", header: "Avg. Order", align: "right", render: (row) => formatMoney(row.averagePurchaseValue) },
   ];
 
   return (
@@ -50,7 +51,7 @@ const CustomerReportTab = () => {
         <StatCard label="Customers" value={report.summary.totalCustomers} />
         <StatCard label="Transactions" value={report.summary.totalTransactions} />
         <StatCard label="Units sold" value={report.summary.totalQuantitySold} />
-        <StatCard label="Total revenue" value={report.summary.totalRevenue.toFixed(2)} />
+        <StatCard label="Total revenue" value={formatMoney(report.summary.totalRevenue, 0)} />
       </div>
 
       <div className="panel">
@@ -61,4 +62,4 @@ const CustomerReportTab = () => {
   );
 };
 
-export default CustomerReportTab;
+export default CustomerReportTab;

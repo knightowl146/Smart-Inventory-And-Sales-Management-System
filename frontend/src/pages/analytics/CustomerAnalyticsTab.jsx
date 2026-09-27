@@ -4,6 +4,7 @@ import StatCard from "../../components/StatCard";
 import DataTable from "../../components/DataTable";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
+import { formatMoney } from "../../utils/format";
 
 const CustomerAnalyticsTab = () => {
   const [summary, setSummary] = useState(null);
@@ -41,7 +42,7 @@ const CustomerAnalyticsTab = () => {
     { key: "phone", header: "Phone" },
     { key: "salesCount", header: "Orders", align: "right" },
     { key: "totalQuantityPurchased", header: "Units Bought", align: "right" },
-    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => row.totalSpent.toFixed(2) },
+    { key: "totalSpent", header: "Total Spent", align: "right", render: (row) => formatMoney(row.totalSpent) },
   ];
 
   return (
@@ -50,8 +51,8 @@ const CustomerAnalyticsTab = () => {
         <StatCard label="Total customers" value={summary.totalCustomers} />
         <StatCard label="Total sales" value={summary.totalSales} />
         <StatCard label="Units sold" value={summary.totalQuantitySold} />
-        <StatCard label="Total revenue" value={summary.totalRevenue.toFixed(2)} />
-        <StatCard label="Average sale value" value={summary.averageSaleValue.toFixed(2)} />
+        <StatCard label="Total revenue" value={formatMoney(summary.totalRevenue, 0)} />
+        <StatCard label="Average sale value" value={formatMoney(summary.averageSaleValue, 0)} />
       </div>
 
       <div className="panel">
@@ -67,4 +68,4 @@ const CustomerAnalyticsTab = () => {
   );
 };
 
-export default CustomerAnalyticsTab;
+export default CustomerAnalyticsTab;

@@ -179,7 +179,11 @@ const generateDailyDemand = (sku, days, options = {}) => {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
 
-  for (let dayOffset = days; dayOffset >= 1; dayOffset -= 1) {
+  // Yesterday is the default last day. includeToday adds today as one more day
+  // at the end, so every earlier day draws exactly the same numbers as before.
+  const lastOffset = options.includeToday ? 0 : 1;
+
+  for (let dayOffset = days; dayOffset >= lastOffset; dayOffset -= 1) {
     const date = new Date(today);
     date.setDate(date.getDate() - dayOffset);
 

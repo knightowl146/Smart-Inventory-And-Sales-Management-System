@@ -7,6 +7,8 @@ import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
 import NewProductForm from "../components/NewProductForm";
 import { draftFromLine } from "../utils/newProductDraft";
+import { formatMoney } from "../utils/format";
+import { useAuth } from "../context/authContext";
 
 const STATUS_BADGE = { matched: "healthy", uncertain: "warning", unmatched: "danger", created: "healthy" };
 
@@ -30,6 +32,7 @@ const STATUS_LABEL = {
  * feature saves the typing, not the judgement.
  */
 const ScanInvoice = () => {
+  const { isDemo } = useAuth();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [scanning, setScanning] = useState(false);
@@ -279,7 +282,7 @@ const ScanInvoice = () => {
               )}
               {result.invoice.documentTotal != null && (
                 <span>
-                  Total on page <strong>{result.invoice.documentTotal}</strong>
+                  Total on page <strong>{formatMoney(result.invoice.documentTotal)}</strong>
                 </span>
               )}
             </div>
@@ -422,12 +425,13 @@ const ScanInvoice = () => {
             </div>
 
             <div className="scan__actions">
-              <Button onClick={record} disabled={recording || includedCount === 0}>
+              <Button onClick={record} disabled={isDemo || recording || includedCount === 0}>
                 {recording ? "Recording…" : `Record ${includedCount} purchase${includedCount === 1 ? "" : "s"}`}
               </Button>
               <span className="field-hint">
-                This adds stock and writes a movement for each line, exactly as the
-                Purchases page would.
+                {isDemo
+                  ? "Recording is switched off in the read-only demo - reading and matching the invoice is the part to try."
+                  : "This adds stock and writes a movement for each line, exactly as the Purchases page would."}
               </span>
             </div>
           </div>

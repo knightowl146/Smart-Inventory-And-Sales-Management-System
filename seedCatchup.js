@@ -15,6 +15,8 @@ const { dayKey, addDaysToKey, findGapDays, planCatchup } = require("./services/s
  *
  *   npm run seed:catchup                 plan, confirm, write
  *   npm run seed:catchup -- --dry-run    plan and print, write nothing
+ *   npm run seed:catchup -- --today      also fill today, up to the current
+ *                                        time (shop hours 10:00-21:00, local)
  *   npm run seed:catchup -- --yes        skip the confirmation (for a scheduler;
  *                                        requires DEMO_MODE=true)
  *
@@ -32,6 +34,10 @@ const { dayKey, addDaysToKey, findGapDays, planCatchup } = require("./services/s
  */
 
 const DRY_RUN = process.argv.includes("--dry-run");
+// Also fill today, pro-rated to the current time (see proRateToday in
+// services/seed/catchup.js). Off by default and never used by the scheduled
+// job, which runs just after midnight when today has barely begun.
+const INCLUDE_TODAY = process.argv.includes("--today");
 const SKIP_PROMPT = process.argv.includes("--yes") || process.argv.includes("-y");
 const BATCH_SIZE = 1000;
 
@@ -79,7 +85,9 @@ const run = async () => {
   }
 
   const historyStartKey = dayKey(first.createdAt);
-  const yesterdayKey = addDaysToKey(dayKey(new Date()), -1);
+  const todayKey = dayKey(new Date());
+  const yesterdayKey = addDaysToKey(todayKey, -1);
+  const lastKey = INCLUDE_TODAY ? todayKey : yesterdayKey;
 
   // Sales per UTC day, the same day boundary the analytics use.
   const perDay = await StockMovement.aggregate([
@@ -88,11 +96,17 @@ const run = async () => {
   ]);
   const salesPerDay = new Map(perDay.map((row) => [row._id, row.count]));
 
-  const gapDays = findGapDays(salesPerDay, historyStartKey, yesterdayKey);
+  const gapDays = findGapDays(salesPerDay, historyStartKey, lastKey);
 
   if (gapDays.length === 0) {
-    logger.info(`No gap - trading is recorded every day from ${historyStartKey} to ${yesterdayKey}.`);
+    logger.info(`No gap - trading is recorded every day from ${historyStartKey} to ${lastKey}.`);
     return;
+  }
+
+  if (gapDays.includes(todayKey)) {
+    logger.info(
+      "Today is included, pro-rated to the current time: only the share of a normal day's trading that would have happened by now (shop hours 10:00-21:00)."
+    );
   }
 
   logger.info(
@@ -231,7 +245,7 @@ const run = async () => {
     );
   }
 
-  logger.info(`Done. Wrote ${toInsert.length} movements; trading now runs every day up to ${yesterdayKey}.`);
+  logger.info(`Done. Wrote ${toInsert.length} movements; trading now runs every day up to ${lastKey}.`);
 };
 
 run()

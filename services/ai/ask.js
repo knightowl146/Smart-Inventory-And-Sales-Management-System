@@ -29,6 +29,10 @@ const FALLBACK = "The underlying figures are on the Analytics and Reports pages.
  * theirs to see.
  */
 const unavailableMessage = (user) => {
+  // The demo's daily allowance is explained to whoever hit it, whatever their
+  // role - it is about their own use, not the server's configuration.
+  if (getLastFailure()?.reason === "demo") return getLastFailure().message;
+
   const explanation = describeLastFailure();
 
   if (user.role !== "owner" || !explanation) {
@@ -58,8 +62,10 @@ Rules you must follow:
   specified, use the last 30 days and say so.
 - Be brief. Two or three sentences for a simple question. Lead with the number
   the person asked for.
-- Amounts are in the shop's own currency; write them plainly (1,250) without a
-  currency symbol.
+- Amounts are in Indian rupees. Write them with the rupee sign and Indian digit
+  grouping: ₹1,250 or ₹12,50,000.
+- For more than two items, use a list with each item on its own line, starting
+  "1." or "-". Bold (**...**) only product names.
 `.trim();
 
 /**

@@ -5,6 +5,7 @@ import { getSuppliers } from "../api/suppliers";
 import ReceiptButton from "../components/ReceiptButton";
 import DataTable from "../components/DataTable";
 import Pagination from "../components/Pagination";
+import { formatMoney } from "../utils/format";
 
 const Movements = () => {
   const [movements, setMovements] = useState([]);
@@ -71,7 +72,7 @@ const Movements = () => {
       },
       { key: "product", header: "Product", render: (row) => row.product?.name || "—" },
       { key: "quantity", header: "Qty", align: "right" },
-      { key: "unitPrice", header: "Unit Price", align: "right", render: (row) => row.unitPrice.toFixed(2) },
+      { key: "unitPrice", header: "Unit Price", align: "right", render: (row) => formatMoney(row.unitPrice) },
       { key: "prevQuantity", header: "Stock Before", align: "right" },
       { key: "newQuantity", header: "Stock After", align: "right" },
       {

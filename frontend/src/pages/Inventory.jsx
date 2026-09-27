@@ -4,6 +4,7 @@ import { getInventoryHealth } from "../api/analytics";
 import DataTable from "../components/DataTable";
 import StatCard from "../components/StatCard";
 import Pagination from "../components/Pagination";
+import { formatMoney } from "../utils/format";
 
 const statusFor = (product) => {
   if (product.quantity === 0) return { label: "Out of stock", tone: "danger" };
@@ -72,7 +73,7 @@ const Inventory = () => {
       key: "value",
       header: "Value",
       align: "right",
-      render: (row) => (row.quantity * row.purchasePrice).toFixed(2),
+      render: (row) => formatMoney(row.quantity * row.purchasePrice),
     },
   ];
 
@@ -83,7 +84,7 @@ const Inventory = () => {
         <StatCard label="Total units in stock" value={health?.totalQuantity ?? "—"} />
         <StatCard label="Low stock" value={health?.lowStockProducts ?? "—"} tone="warning" />
         <StatCard label="Out of stock" value={health?.outOfStockProducts ?? "—"} tone="danger" />
-        <StatCard label="Inventory value" value={health ? health.inventoryValue.toFixed(2) : "—"} />
+        <StatCard label="Inventory value" value={health ? formatMoney(health.inventoryValue, 0) : "—"} />
       </div>
 
       {healthError && <div className="error-banner" role="alert"><p>{healthError}</p></div>}

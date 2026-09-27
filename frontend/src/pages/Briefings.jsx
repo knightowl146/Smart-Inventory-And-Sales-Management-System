@@ -4,6 +4,7 @@ import Button from "../components/Button";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
+import { formatMoney, formatNumber } from "../utils/format";
 
 /**
  * Weekly briefings.
@@ -110,10 +111,10 @@ const Briefings = () => {
           {briefing.metrics?.current && (
             <div className="briefing__metrics">
               <span>
-                Revenue <strong>{briefing.metrics.current.revenue}</strong>
+                Revenue <strong>{formatMoney(briefing.metrics.current.revenue, 0)}</strong>
               </span>
               <span>
-                Units <strong>{briefing.metrics.current.units}</strong>
+                Units <strong>{formatNumber(briefing.metrics.current.units)}</strong>
               </span>
               <span>
                 Sales <strong>{briefing.metrics.current.transactions}</strong>

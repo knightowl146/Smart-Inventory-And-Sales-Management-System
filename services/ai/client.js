@@ -3,6 +3,7 @@ const { GoogleGenAI } = require("@google/genai");
 const env = require("../../config/env");
 const logger = require("../../utils/logger");
 const AiCall = require("../../models/AiCall");
+const { checkDemoAllowance, noteDemoCall } = require("./demoAllowance");
 
 /**
  * The single door to the model.
@@ -165,8 +166,8 @@ const recordCall = (entry) => {
  */
 let lastFailure = null;
 
-const noteFailure = (feature, message) => {
-  lastFailure = { feature, message, reason: classifyAiError(message), at: new Date() };
+const noteFailure = (feature, message, reason = classifyAiError(message)) => {
+  lastFailure = { feature, message, reason, at: new Date() };
 };
 
 const getLastFailure = () => lastFailure;
@@ -189,6 +190,8 @@ const describeLastFailure = () => {
     timeout: `Gemini took longer than ${TIMEOUT_MS / 1000} seconds to answer, so the app stopped waiting. If this keeps happening, the model is thinking too long for this timeout.`,
     overloaded: "Google's Gemini servers are overloaded right now - the problem is on their side, not in this app. Try again in a minute.",
     budget: `This month's AI budget of $${MONTHLY_BUDGET_USD} has been reached.`,
+    // Already a full sentence, written for the demo visitor.
+    demo: lastFailure.message,
   };
 
   return (
@@ -260,6 +263,15 @@ const generate = async ({ contents, config = {}, feature, userId = null, cacheab
       return hit;
     }
   }
+
+  // Public demo accounts get a daily allowance, checked before anything is
+  // spent. See demoAllowance.js.
+  const demoRefusal = await checkDemoAllowance({ monthlySpend, monthlyBudget: MONTHLY_BUDGET_USD });
+  if (demoRefusal) {
+    noteFailure(feature, demoRefusal, "demo");
+    return null;
+  }
+  noteDemoCall();
 
   if ((await monthlySpend()) >= MONTHLY_BUDGET_USD) {
     logger.warn(

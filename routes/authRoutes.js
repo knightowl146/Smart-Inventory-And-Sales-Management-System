@@ -38,6 +38,27 @@ const loginLimiter = rateLimit({
   },
 });
 
+/**
+ * Every sign-in from one address, successful or not.
+ *
+ * The limiter above deliberately ignores successful sign-ins, so a shop signing
+ * people in and out all day is never locked out. But the demo password is
+ * public, and a successful sign-in still writes to the database - the sign-in
+ * time, an activity-log entry - so an unlimited stream of them is a cheap way
+ * to fill both. Thirty an hour is far beyond anyone using the app by hand.
+ */
+const loginBurstLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  message: {
+    success: false,
+    message: "Too many sign-ins from this network. Try again in an hour.",
+  },
+});
+
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 60,
@@ -45,7 +66,7 @@ const refreshLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-router.post("/login", loginLimiter, login);
+router.post("/login", loginBurstLimiter, loginLimiter, login);
 router.post("/refresh", refreshLimiter, refresh);
 router.post("/logout", logout);
 

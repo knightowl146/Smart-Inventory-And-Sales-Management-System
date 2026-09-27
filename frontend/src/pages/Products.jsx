@@ -6,6 +6,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import FormField from "../components/FormField";
 import Button from "../components/Button";
 import Pagination from "../components/Pagination";
+import { formatMoney } from "../utils/format";
 
 const emptyForm = {
   name: "",
@@ -174,7 +175,7 @@ const Products = () => {
       key: "sellingPrice",
       header: "Selling Price",
       align: "right",
-      render: (row) => row.sellingPrice.toFixed(2),
+      render: (row) => formatMoney(row.sellingPrice),
     },
     {
       key: "actions",

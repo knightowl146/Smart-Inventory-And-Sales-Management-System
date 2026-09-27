@@ -5,6 +5,7 @@ import { getMovements } from "../api/movements";
 import DataTable from "../components/DataTable";
 import FormField from "../components/FormField";
 import Button from "../components/Button";
+import { formatMoney } from "../utils/format";
 
 const emptyForm = { productId: "", supplierId: "", quantity: "1", unitPrice: "" };
 
@@ -95,12 +96,12 @@ const Purchases = () => {
   const columns = [
     { key: "product", header: "Product", render: (row) => row.product?.name || "—" },
     { key: "quantity", header: "Qty", align: "right" },
-    { key: "unitPrice", header: "Unit Price", align: "right", render: (row) => row.unitPrice.toFixed(2) },
+    { key: "unitPrice", header: "Unit Price", align: "right", render: (row) => formatMoney(row.unitPrice) },
     {
       key: "total",
       header: "Total",
       align: "right",
-      render: (row) => (row.quantity * row.unitPrice).toFixed(2),
+      render: (row) => formatMoney(row.quantity * row.unitPrice),
     },
     { key: "newQuantity", header: "Stock After", align: "right" },
     { key: "createdAt", header: "Date", render: (row) => new Date(row.createdAt).toLocaleString() },
@@ -128,7 +129,7 @@ const Purchases = () => {
 
           {selectedProduct && (
             <p className="field-hint">
-              Current stock: {selectedProduct.quantity} · Purchase price: {selectedProduct.purchasePrice.toFixed(2)}
+              Current stock: {selectedProduct.quantity} · Purchase price: {formatMoney(selectedProduct.purchasePrice)}
             </p>
           )}
 

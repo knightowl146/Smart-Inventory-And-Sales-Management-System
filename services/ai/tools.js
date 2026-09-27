@@ -618,36 +618,26 @@ const TOOLS = [
     handler: async (args) => {
       const limit = Math.min(Math.max(Number(args.limit) || 15, 1), 40);
 
-      const products = await Product.find().select("name sku quantity").lean();
-      const { getAllDemandSeries } = require("../forecasting/demandRepository");
-      const allSeries = await getAllDemandSeries(90);
+      // The same plan the Reorder Plan page shows, so the assistant and the
+      // page never disagree about what is urgent.
+      const { buildReorderPlan } = require("../inventory/reorderPlan");
+      const plan = await buildReorderPlan();
 
-      const rows = products
-        .map((product) => {
-          const series = allSeries.get(String(product._id)) ?? { dates: [], values: [] };
-          const stats = demandStatistics(series);
-          const policy = calculateReorderPolicy({
-            meanDailyDemand: stats.meanDailyDemand,
-            demandStdDev: stats.demandStdDev,
-            leadTimeDays: 7,
-            currentStock: product.quantity,
-          });
-
-          return {
-            name: product.name,
-            sku: product.sku,
-            currentStock: product.quantity,
-            urgency: policy.urgency,
-            reorderPoint: policy.reorderPoint,
-            suggestedQuantity: policy.suggestedQuantity,
-            daysOfCover: policy.daysOfCover,
-          };
-        })
+      const rows = plan.rows
         .filter((row) => row.suggestedQuantity > 0)
-        .sort((a, b) => a.daysOfCover - b.daysOfCover)
-        .slice(0, limit);
+        .slice(0, limit)
+        .map((row) => ({
+          name: row.product.name,
+          sku: row.product.sku,
+          currentStock: row.product.currentStock,
+          urgency: row.urgency,
+          reorderPoint: row.reorderPoint,
+          suggestedQuantity: row.suggestedQuantity,
+          daysOfCover: row.daysOfCover,
+          leadTimeDays: row.leadTime.leadTimeDays,
+        }));
 
-      return { count: rows.length, products: rows };
+      return { count: rows.length, needingOrderInTotal: plan.summary.needingOrder, products: rows };
     },
   },
 ];

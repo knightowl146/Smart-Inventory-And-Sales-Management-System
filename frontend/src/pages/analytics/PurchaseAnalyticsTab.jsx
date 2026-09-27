@@ -6,6 +6,7 @@ import CategoryBarChart from "../../components/CategoryBarChart";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/EmptyState";
+import { formatMoney, formatMoneyShort } from "../../utils/format";
 
 const formatDate = (isoDate) =>
   new Date(isoDate).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -49,7 +50,7 @@ const PurchaseAnalyticsTab = () => {
     <div>
       <div className="stat-grid">
         <StatCard label="Total units purchased" value={summary.totalUnitsPurchased} />
-        <StatCard label="Total purchase cost" value={summary.totalPurchaseCost.toFixed(2)} />
+        <StatCard label="Total purchase cost" value={formatMoney(summary.totalPurchaseCost, 0)} />
       </div>
 
       <div className="dashboard-grid">
@@ -62,8 +63,8 @@ const PurchaseAnalyticsTab = () => {
               <LineChart data={chartData}>
                 <CartesianGrid stroke="#e1e3df" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <Tooltip />
+                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={formatMoneyShort} width={64} />
+                <Tooltip formatter={(value) => formatMoney(value)} />
                 <Line type="monotone" dataKey="spend" stroke="#2c4a7c" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -83,4 +84,4 @@ const PurchaseAnalyticsTab = () => {
   );
 };
 
-export default PurchaseAnalyticsTab;
+export default PurchaseAnalyticsTab;

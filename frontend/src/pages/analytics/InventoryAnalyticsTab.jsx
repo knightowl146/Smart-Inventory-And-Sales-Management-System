@@ -6,6 +6,7 @@ import DataTable from "../../components/DataTable";
 import Spinner from "../../components/Spinner";
 import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/EmptyState";
+import { formatMoney } from "../../utils/format";
 
 const InventoryAnalyticsTab = () => {
   const [byCategory, setByCategory] = useState([]);
@@ -45,7 +46,7 @@ const InventoryAnalyticsTab = () => {
     { key: "productName", header: "Product" },
     { key: "category", header: "Category" },
     { key: "quantitySold", header: "Units Sold", align: "right" },
-    { key: "costOfGoodsSold", header: "COGS", align: "right", render: (row) => row.costOfGoodsSold.toFixed(2) },
+    { key: "costOfGoodsSold", header: "COGS", align: "right", render: (row) => formatMoney(row.costOfGoodsSold) },
     { key: "turnoverRatio", header: "Turnover Ratio", align: "right" },
   ];
 
@@ -53,7 +54,7 @@ const InventoryAnalyticsTab = () => {
     { key: "productName", header: "Product" },
     { key: "category", header: "Category" },
     { key: "quantity", header: "Stock", align: "right" },
-    { key: "inventoryValue", header: "Value Tied Up", align: "right", render: (row) => row.inventoryValue.toFixed(2) },
+    { key: "inventoryValue", header: "Value Tied Up", align: "right", render: (row) => formatMoney(row.inventoryValue) },
     {
       key: "daysSinceLastSale",
       header: "Days Since Last Sale",
@@ -76,8 +77,8 @@ const InventoryAnalyticsTab = () => {
       <div className="panel" style={{ marginTop: 20 }}>
         <h2 className="panel__title">Inventory turnover</h2>
         <div className="stat-grid">
-          <StatCard label="Total COGS" value={turnover.summary.totalCOGS.toFixed(2)} />
-          <StatCard label="Total inventory value" value={turnover.summary.totalInventoryValue.toFixed(2)} />
+          <StatCard label="Total COGS" value={formatMoney(turnover.summary.totalCOGS, 0)} />
+          <StatCard label="Total inventory value" value={formatMoney(turnover.summary.totalInventoryValue, 0)} />
           <StatCard label="Turnover ratio" value={turnover.summary.inventoryTurnoverRatio} />
         </div>
         <DataTable
@@ -93,7 +94,7 @@ const InventoryAnalyticsTab = () => {
         <div className="stat-grid">
           <StatCard label="Dead stock products" value={deadStock.summary.deadStockProducts} tone="warning" />
           <StatCard label="Units tied up" value={deadStock.summary.deadStockQuantity} tone="warning" />
-          <StatCard label="Value tied up" value={deadStock.summary.deadStockValue.toFixed(2)} tone="warning" />
+          <StatCard label="Value tied up" value={formatMoney(deadStock.summary.deadStockValue, 0)} tone="warning" />
         </div>
         <DataTable
           columns={deadStockColumns}
@@ -106,4 +107,4 @@ const InventoryAnalyticsTab = () => {
   );
 };
 
-export default InventoryAnalyticsTab;
+export default InventoryAnalyticsTab;

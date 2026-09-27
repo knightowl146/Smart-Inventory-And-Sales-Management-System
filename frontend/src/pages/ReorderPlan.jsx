@@ -4,6 +4,7 @@ import StatCard from "../components/StatCard";
 import Spinner from "../components/Spinner";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
+import { formatMoney, formatNumber } from "../utils/format";
 
 const BADGE = {
   OUT_OF_STOCK: "danger",
@@ -106,14 +107,13 @@ const ReorderPlan = () => {
               value={plan.summary.outOfStock}
               tone={plan.summary.outOfStock > 0 ? "danger" : undefined}
             />
-            <StatCard label="Estimated cost" value={plan.summary.estimatedTotalCost} />
+            <StatCard label="Estimated cost" value={formatMoney(plan.summary.estimatedTotalCost, 0, 0)} />
           </div>
 
           <div className="panel">
             <p className="field-hint">
-              Reorder points assume a {plan.assumptions.leadTimeDays}-day lead time at a{" "}
-              {Math.round(plan.assumptions.serviceLevel * 100)}% service level, from{" "}
-              {plan.assumptions.lookbackDays} days of demand. {plan.assumptions.note}
+              Reorder points use a {Math.round(plan.assumptions.serviceLevel * 100)}% service level
+              and {plan.assumptions.lookbackDays} days of demand. {plan.assumptions.note}
             </p>
 
             {rows.length === 0 ? (
@@ -126,6 +126,7 @@ const ReorderPlan = () => {
                       <th>Product</th>
                       <th>Status</th>
                       <th>In stock</th>
+                      <th>Lead time</th>
                       <th>Reorder point</th>
                       <th>Days of cover</th>
                       <th>Order</th>
@@ -144,16 +145,20 @@ const ReorderPlan = () => {
                             {row.urgency.replace(/_/g, " ").toLowerCase()}
                           </span>
                         </td>
-                        <td>{row.product.currentStock}</td>
+                        <td>{formatNumber(row.product.currentStock)}</td>
+                        <td title={row.leadTime.supplierName ?? "No supplier has delivered this yet"}>
+                          {row.leadTime.leadTimeDays} days
+                          {row.leadTime.source === "default" && <span className="field-hint"> (default)</span>}
+                        </td>
                         <td>
                           {row.reorderPoint}
                           <span className="field-hint"> (+{row.safetyStock} safety)</span>
                         </td>
                         <td>{row.daysOfCover ?? "—"}</td>
                         <td>
-                          <strong>{row.suggestedQuantity}</strong>
+                          <strong>{formatNumber(row.suggestedQuantity)}</strong>
                         </td>
-                        <td>{row.estimatedCost}</td>
+                        <td>{formatMoney(row.estimatedCost, 0)}</td>
                       </tr>
                     ))}
                   </tbody>

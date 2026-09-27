@@ -340,3 +340,77 @@ describe("Audit log", () => {
     expect(JSON.stringify(res.body)).not.toContain("a-good-password");
   });
 });
+
+// ── The public demo accounts ─────────────────────────────────────────────────
+
+describe("A read-only demo account", () => {
+  const supertest = require("supertest");
+  const User = require("../models/User");
+  const { signAccessToken } = require("../services/tokenService");
+
+  let demoOwner;
+  const asDemo = (method, url) =>
+    supertest(app)[method](url).set("Authorization", `Bearer ${signAccessToken(demoOwner)}`);
+
+  beforeAll(async () => {
+    demoOwner = new User({
+      name: "Demo Owner",
+      email: "demo-owner@test.local",
+      role: "owner",
+      isDemo: true,
+    });
+    await demoOwner.setPassword(TEST_PASSWORD);
+    await demoOwner.save();
+  });
+
+  it("can read everything an owner can", async () => {
+    expect((await asDemo("get", "/api/products")).status).toBe(200);
+    expect((await asDemo("get", "/api/analytics/profit-loss")).status).toBe(200);
+    expect((await asDemo("get", "/api/users")).status).toBe(200);
+  });
+
+  it.each([
+    ["post", "/api/products"],
+    ["post", `/api/products/:id/sell`],
+    ["post", `/api/products/:id/purchase`],
+    ["delete", `/api/products/:id`],
+    ["post", "/api/suppliers"],
+    ["post", "/api/users"],
+    ["post", "/api/auth/logout-all"],
+    ["post", "/api/auth/change-password"],
+    ["post", "/api/ai/briefings"],
+  ])("403 DEMO_READ_ONLY: %s %s", async (method, url) => {
+    const res = await asDemo(method, url.replace(":id", productId)).send({
+      quantity: 1_000_000,
+      unitPrice: 1,
+      customerId,
+      supplierId,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("DEMO_READ_ONLY");
+  });
+
+  it("really changes nothing - a million-unit sale leaves stock where it was", async () => {
+    const before = await asOwner(app).get(`/api/products/${productId}`);
+
+    await asDemo("post", `/api/products/${productId}/sell`).send({ quantity: 1_000_000, customerId });
+
+    const after = await asOwner(app).get(`/api/products/${productId}`);
+    expect(after.body.data.quantity).toBe(before.body.data.quantity);
+  });
+
+  it("sees other people's email addresses masked, and its own in full", async () => {
+    const res = await asDemo("get", "/api/users");
+    const emails = res.body.data.map((user) => user.email);
+
+    expect(emails).toContain("demo-owner@test.local");
+    expect(emails).not.toContain("owner@test.local");
+    expect(emails).toContain("o•••••@test.local");
+  });
+
+  it("a real owner's view is unchanged", async () => {
+    const res = await asOwner(app).get("/api/users");
+    expect(res.body.data.map((user) => user.email)).toContain("owner@test.local");
+  });
+});
